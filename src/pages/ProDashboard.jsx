@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Camera, CheckCircle, Star } from 'lucide-react'
+import { Camera, CheckCircle, Star, Map, List } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+const MapView = lazy(() => import('../components/MapView'))
 
 const TABS = ['Demandes à proximité', 'Mon profil & vérification', 'Mes évaluations']
 
@@ -12,7 +15,8 @@ export default function ProDashboard() {
   const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto } = useRequests()
   const { toasts, toast } = useToast()
 
-  const [tab,       setTab]       = useState(0)
+  const [tab,        setTab]        = useState(0)
+  const [viewMode,   setViewMode]   = useState('list') // 'list' or 'map'
   const [offerPrice, setOfferPrice] = useState({})
   const [offerMsg,   setOfferMsg]   = useState({})
   const [uploading,  setUploading]  = useState({})
@@ -171,9 +175,40 @@ export default function ProDashboard() {
           })}
 
           {/* Demandes ouvertes */}
-          <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3 mt-5">
-            Demandes à proximité ({openReqs.length})
-          </h2>
+          <div className="flex items-center justify-between mb-3 mt-5">
+            <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide">
+              Demandes à proximité ({openReqs.length})
+            </h2>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-700 transition-all ${
+                  viewMode === 'list' ? 'bg-white text-teal shadow-sm' : 'text-gray-400'
+                }`}>
+                <List size={13} /> Liste
+              </button>
+              <button onClick={() => setViewMode('map')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-700 transition-all ${
+                  viewMode === 'map' ? 'bg-white text-teal shadow-sm' : 'text-gray-400'
+                }`}>
+                <Map size={13} /> Carte
+              </button>
+            </div>
+          </div>
+
+          {/* Vue carte */}
+          {viewMode === 'map' && (
+            <div className="mb-5">
+              <Suspense fallback={<div className="h-96 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400">🗺️ Chargement de la carte...</div>}>
+                <MapView
+                  requests={openReqs}
+                  proZone={profile?.zone}
+                  radius={profile?.radius || '25'}
+                />
+              </Suspense>
+              <p className="text-xs text-gray-400 text-center mt-2">Cliquez sur un 🏔 pour voir les détails</p>
+            </div>
+          )}
+
           {loading ? (
             <div className="text-center py-12 text-3xl">⏳</div>
           ) : openReqs.length === 0 ? (
@@ -182,7 +217,7 @@ export default function ProDashboard() {
               <p className="font-700 text-gray-600">Aucune demande dans votre zone</p>
               <p className="text-sm text-gray-400 mt-1">Vous recevrez une notification dès qu'une demande est publiée près de chez vous.</p>
             </div>
-          ) : (
+          ) : viewMode === 'list' ? (
             openReqs.map(req => (
               <div key={req.id} className="card mb-4 hover:border-teal transition-all">
                 <div className="flex justify-between items-start mb-3">
@@ -220,7 +255,7 @@ export default function ProDashboard() {
                 </div>
               </div>
             ))
-          )}
+          ) : null}
         </div>
       )}
 
@@ -309,7 +344,8 @@ export default function ProDashboard() {
               </div>
             ))}
             <button onClick={() => toast('✏️ Formulaire d\'édition à implémenter', 'info')}
-              className="btn-secondary text-xs mt-3">✏️ Modifier le profil</button>
+              <Link to="/pro/editer"
+                className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier le profil</Link>
           </div>
         </div>
       )}
