@@ -9,6 +9,7 @@ import Register     from './pages/Register'
 import Dashboard    from './pages/Dashboard'
 import ProDashboard from './pages/ProDashboard'
 import Paiement     from './pages/Paiement'
+import NewChalet    from './pages/NewChalet'
 
 // Redirige après connexion selon le rôle
 function RoleRedirect() {
@@ -36,6 +37,11 @@ function AppRoutes() {
         <Route path="/dashboard" element={
           <ProtectedRoute requiredRole="proprio">
             <Dashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/nouveau-chalet" element={
+          <ProtectedRoute requiredRole="proprio">
+            <NewChalet />
           </ProtectedRoute>
         } />
 
