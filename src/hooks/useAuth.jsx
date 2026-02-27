@@ -43,15 +43,33 @@ export function AuthProvider({ children }) {
   }
 
   // ── Inscription ────────────────────────────────────────────
-  async function signUp({ email, password, role, firstName, lastName, phone }) {
+  async function signUp({ email, password, role, firstName, lastName, phone, ...rest }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { role, first_name: firstName, last_name: lastName, phone }
+        data: {
+          role,
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          ...rest
+        }
       }
     })
     if (error) throw error
+
+    // Mettre à jour le profil avec les infos supplémentaires
+    if (data.user && Object.keys(rest).length > 0) {
+      await supabase.from('profiles').update({
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        role,
+        ...rest
+      }).eq('id', data.user.id)
+    }
+
     return data
   }
 
