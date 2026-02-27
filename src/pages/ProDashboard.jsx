@@ -343,7 +343,6 @@ export default function ProDashboard() {
                 <span className="text-sm font-600 text-gray-800">{row.val}</span>
               </div>
             ))}
-            <button onClick={() => toast('✏️ Formulaire d\'édition à implémenter', 'info')}
               <Link to="/pro/editer"
                 className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier le profil</Link>
           </div>
