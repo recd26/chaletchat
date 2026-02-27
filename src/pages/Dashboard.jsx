@@ -46,9 +46,14 @@ export default function Dashboard() {
             Bonjour {profile?.first_name} • {chalets.length} chalet{chalets.length > 1 ? 's' : ''} actif{chalets.length > 1 ? 's' : ''}
           </p>
         </div>
-        <Link to="/nouvelle-demande" className="btn-primary flex items-center gap-2">
-          <Plus size={15} /> Nouvelle demande
-        </Link>
+        <div className="flex gap-2">
+          <Link to="/nouveau-chalet" className="btn-secondary flex items-center gap-2 text-sm">
+            <Plus size={15} /> Chalet
+          </Link>
+          <Link to="/nouvelle-demande" className="btn-primary flex items-center gap-2 text-sm">
+            <Plus size={15} /> Demande
+          </Link>
+        </div>
       </div>
 
       {/* Onglets */}
@@ -90,13 +95,19 @@ export default function Dashboard() {
                       <h3 className="font-700 text-gray-900">🏔 {chalet.name}</h3>
                       <p className="text-xs text-gray-400 mt-0.5">{chalet.city} • {chalet.bedrooms} ch. • {chalet.bathrooms} sdb</p>
                     </div>
-                    {req ? (
-                      <span className={`pill-${req.status === 'completed' ? 'done' : req.status === 'open' ? 'pending' : 'active'}`}>
-                        {req.status === 'open' ? '⏳ En attente d\'offres' : req.status === 'confirmed' ? '✅ Confirmé' : req.status === 'completed' ? '✔ Complété' : req.status}
-                      </span>
-                    ) : (
-                      <span className="pill-done">Aucune demande active</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Link to={`/chalet/${chalet.id}/editer`}
+                        className="text-xs font-600 text-gray-400 hover:text-coral border border-gray-200 rounded-lg px-2.5 py-1.5 transition-all">
+                        ✏️ Modifier
+                      </Link>
+                      {req ? (
+                        <span className={`pill-${req.status === 'completed' ? 'done' : req.status === 'open' ? 'pending' : 'active'}`}>
+                          {req.status === 'open' ? '⏳ En attente' : req.status === 'confirmed' ? '✅ Confirmé' : req.status === 'completed' ? '✔ Complété' : req.status}
+                        </span>
+                      ) : (
+                        <span className="pill-done">Aucune demande</span>
+                      )}
+                    </div>
                   </div>
 
                   {req && (
