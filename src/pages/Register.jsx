@@ -4,9 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
 import StepIndicator from '../components/StepIndicator'
 import PasswordInput from '../components/PasswordInput'
-import UploadBox from '../components/UploadBox'
 import Toast from '../components/Toast'
-import StripeCardForm from '../components/StripeCardForm'
 
 // ── Étapes selon le rôle ────────────────────────────────────
 const STEPS_PROPRIO = ['Compte', 'Profil', 'Paiement']
@@ -93,7 +91,8 @@ export default function Register() {
       return true
     }
     if (step === 3 && role === 'pro') {
-      // Upload optionnel pour l'instant — on peut compléter plus tard
+      if (!selfieFile) return toast('⚠️ Téléversez votre selfie', 'error')
+      if (!idFile)     return toast('⚠️ Téléversez votre pièce d\'identité', 'error')
       return true
     }
     if (step === 4 && role === 'pro') {
@@ -112,36 +111,9 @@ export default function Register() {
   }
 
   async function handleSubmit() {
-    if (busy) return
     setBusy(true)
     try {
-      await signUp({
-        email,
-        password: pw,
-        role,
-        firstName,
-        lastName,
-        phone,
-        // Profil pro
-        ...(role === 'pro' && {
-          zone,
-          radius,
-          experience,
-          languages,
-          bio,
-          bank_name: bankName,
-          bank_institution: bankInst,
-          bank_transit: transit,
-          bank_institution_num: institution,
-          bank_account: account,
-        }),
-        // Profil proprio
-        ...(role === 'proprio' && {
-          province,
-          chalet_count: chaletCount,
-          location_type: locationType,
-        }),
-      })
+      await signUp({ email, password: pw, role, firstName, lastName, phone })
       toast('🎉 Compte créé ! Bienvenue sur ChaletProp !', 'success')
       setTimeout(() => navigate(role === 'proprio' ? '/dashboard' : '/pro'), 1200)
     } catch (err) {
@@ -272,13 +244,28 @@ export default function Register() {
           <div>
             <h2 className="text-xl font-800 text-gray-900 mb-1">Méthode de paiement 💳</h2>
             <p className="text-sm text-gray-400 mb-6">Obligatoire. Votre carte ne sera débitée qu'après complétion du ménage.</p>
-            <StripeCardForm
-              onSuccess={(paymentMethodId, name) => {
-                toast('💳 Carte validée par Stripe !', 'success')
-                handleSubmit()
-              }}
-              onError={(msg) => toast(msg, 'error')}
-            />
+
+            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Titulaire de la carte</label>
+              <input className={inputClass} placeholder="Jean-François Martin" value={cardName} onChange={e=>setCardName(e.target.value)} /></div>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Numéro de carte</label>
+              <input className={inputClass} placeholder="1234 5678 9012 3456" value={cardNum} onChange={e=>setCardNum(fmtCard(e.target.value))} maxLength={19} />
+              <div className="flex gap-2 mt-2">
+                {['VISA','MC','AMEX'].map(b => (
+                  <span key={b} className="px-2 py-1 border border-gray-200 rounded text-xs font-700 text-gray-400">{b}</span>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Expiration</label>
+                <input className={inputClass} placeholder="MM / AA" value={expiry} onChange={e=>setExpiry(fmtExp(e.target.value))} maxLength={7} /></div>
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">CVV</label>
+                <input className={inputClass} placeholder="123" value={cvv} onChange={e=>setCvv(e.target.value.replace(/\D/g,''))} maxLength={4} /></div>
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700 mb-4">
+              🔒 Paiements sécurisés SSL. Vos informations ne sont jamais partagées.
+            </div>
           </div>
         )}
 
@@ -371,7 +358,6 @@ export default function Register() {
         )}
 
         {/* ── Boutons de navigation ── */}
-        {!(step === 3 && role === 'proprio') && (
         <div className="flex gap-3 mt-6">
           {step > 1 && (
             <button type="button" onClick={() => setStep(s => s - 1)}
@@ -388,10 +374,6 @@ export default function Register() {
             {busy ? 'Création...' : step === totalSteps ? '✅ Créer mon compte' : 'Continuer →'}
           </button>
         </div>
-        )}
-        {step === 3 && role === 'proprio' && (
-          <button type="button" onClick={() => setStep(s => s - 1)} className="btn-secondary w-full mt-3">← Retour</button>
-        )}
 
         <p className="text-center text-sm text-gray-400 mt-5">
           Déjà un compte ?{' '}
