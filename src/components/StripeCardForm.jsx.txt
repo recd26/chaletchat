@@ -1,0 +1,45 @@
+import { useState } from 'react'
+
+export default function StripeCardForm({ onSuccess, onError }) {
+  const [name, setName] = useState('')
+  const [num, setNum] = useState('')
+  const [exp, setExp] = useState('')
+  const [cvv, setCvv] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit() {
+    if (!name) return onError('Entrez le nom du titulaire')
+    if (num.replace(/\s/g,'').length < 14) return onError('Numéro de carte invalide')
+    setBusy(true)
+    setTimeout(() => { onSuccess('pm_test_ok', name); setBusy(false) }, 1000)
+  }
+
+  return (
+    <div>
+      <div style={{marginBottom:'12px'}}>
+        <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#999',marginBottom:'6px'}}>TITULAIRE</label>
+        <input style={{width:'100%',padding:'12px 16px',border:'1px solid #e5e7eb',borderRadius:'12px',fontSize:'14px',background:'#f9fafb'}} placeholder="Jean-François Martin" value={name} onChange={e=>setName(e.target.value)} />
+      </div>
+      <div style={{marginBottom:'12px'}}>
+        <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#999',marginBottom:'6px'}}>NUMÉRO DE CARTE</label>
+        <input style={{width:'100%',padding:'12px 16px',border:'1px solid #e5e7eb',borderRadius:'12px',fontSize:'14px',background:'#f9fafb'}} placeholder="4242 4242 4242 4242" value={num} onChange={e=>setNum(e.target.value)} maxLength={19} />
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'16px'}}>
+        <div>
+          <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#999',marginBottom:'6px'}}>EXPIRATION</label>
+          <input style={{width:'100%',padding:'12px 16px',border:'1px solid #e5e7eb',borderRadius:'12px',fontSize:'14px',background:'#f9fafb'}} placeholder="12/28" value={exp} onChange={e=>setExp(e.target.value)} maxLength={5} />
+        </div>
+        <div>
+          <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#999',marginBottom:'6px'}}>CVV</label>
+          <input style={{width:'100%',padding:'12px 16px',border:'1px solid #e5e7eb',borderRadius:'12px',fontSize:'14px',background:'#f9fafb'}} placeholder="123" value={cvv} onChange={e=>setCvv(e.target.value)} maxLength={4} />
+        </div>
+      </div>
+      <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'12px',padding:'12px',fontSize:'12px',color:'#1d4ed8',marginBottom:'12px'}}>
+        🧪 Mode test — Carte : 4242 4242 4242 4242 • Date : 12/28 • CVV : 123
+      </div>
+      <button onClick={handleSubmit} disabled={busy} style={{width:'100%',padding:'14px',borderRadius:'12px',fontWeight:'700',fontSize:'14px',color:'white',background:'#FF5A5F',border:'none',cursor:'pointer'}}>
+        {busy ? '⏳ Vérification...' : '✅ Valider la carte'}
+      </button>
+    </div>
+  )
+}
