@@ -220,44 +220,102 @@ export default function ProDashboard() {
                         )}
 
                         {/* Checklist avec photos */}
-                        <p className="text-sm font-700 text-gray-800 mb-3 mt-4">Checklist — Photo par pièce obligatoire 📸</p>
-                        <div className="space-y-2 mb-4">
-                          {tasks.map(template => {
-                            const comp = completions.find(c => c.template_id === template.id)
-                            const isDone = comp?.is_done && comp?.photo_url
-                            const key = `${req.id}-${template.id}`
+                        <div className="bg-teal/5 border border-teal/20 rounded-xl p-4 mb-4 mt-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <p className="text-sm font-700 text-gray-800">Checklist du ménage 📸</p>
+                            <span className="text-xs font-700 text-teal bg-teal/10 px-2.5 py-1 rounded-lg">
+                              {done}/{tasks.length} complétées
+                            </span>
+                          </div>
 
-                            return (
-                              <div key={template.id}
-                                className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                                  isDone ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                                }`}>
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-800 ${
-                                    isDone ? 'bg-teal border-teal text-white' : 'bg-white border-gray-200 text-gray-400'
+                          <div className="space-y-3">
+                            {tasks.map((template, idx) => {
+                              const comp = completions.find(c => c.template_id === template.id)
+                              const isDone = comp?.is_done && comp?.photo_url
+                              const key = `${req.id}-${template.id}`
+
+                              return (
+                                <div key={template.id}
+                                  className={`rounded-xl border-2 overflow-hidden transition-all ${
+                                    isDone ? 'border-teal bg-white' : 'border-gray-200 bg-white'
                                   }`}>
-                                    {isDone ? '✓' : ''}
+
+                                  {/* En-tête de la pièce */}
+                                  <div className={`flex items-center gap-3 px-4 py-3 ${isDone ? 'bg-green-50' : ''}`}>
+                                    <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-800 flex-shrink-0 ${
+                                      isDone ? 'bg-teal border-teal text-white' : 'bg-gray-100 border-gray-300 text-gray-400'
+                                    }`}>
+                                      {isDone ? '✓' : idx + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className={`text-sm font-700 ${isDone ? 'text-teal' : 'text-gray-800'}`}>
+                                        {template.room_name}
+                                      </p>
+                                      <p className="text-xs text-gray-400">
+                                        {isDone ? 'Complétée avec photo' : 'Photo obligatoire pour valider'}
+                                      </p>
+                                    </div>
+                                    {isDone && <CheckCircle size={20} className="text-teal flex-shrink-0" />}
                                   </div>
-                                  <span className="text-sm font-600 text-gray-700">{template.room_name}</span>
+
+                                  {/* Zone photo */}
+                                  <div className="px-4 pb-3">
+                                    {isDone ? (
+                                      /* Photo prise - afficher miniature */
+                                      <div className="flex items-center gap-3 bg-green-50 rounded-xl p-3">
+                                        <img
+                                          src={comp.photo_url}
+                                          alt={template.room_name}
+                                          className="w-16 h-16 rounded-lg object-cover border-2 border-teal/30"
+                                        />
+                                        <div className="flex-1">
+                                          <p className="text-xs font-600 text-green-700">Photo validée</p>
+                                          <p className="text-xs text-green-600">
+                                            {comp.completed_at ? new Date(comp.completed_at).toLocaleString('fr-CA', { hour:'2-digit', minute:'2-digit' }) : ''}
+                                          </p>
+                                        </div>
+                                        {/* Reprendre la photo */}
+                                        <label className="cursor-pointer text-xs text-gray-400 hover:text-teal transition-colors">
+                                          Reprendre
+                                          <input type="file" accept="image/*" className="hidden"
+                                            onChange={e => handlePhoto(req.id, template.id, e)} />
+                                        </label>
+                                      </div>
+                                    ) : (
+                                      /* Pas encore complétée - boutons photo */
+                                      <div className="flex gap-2">
+                                        {/* Prendre une photo (caméra) */}
+                                        <label className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed transition-all ${
+                                          uploading[key] ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-teal/40 bg-teal/5 hover:bg-teal/10 hover:border-teal'
+                                        }`}>
+                                          <Camera size={18} className="text-teal" />
+                                          <span className="text-sm font-700 text-teal">
+                                            {uploading[key] ? 'Envoi...' : 'Prendre une photo'}
+                                          </span>
+                                          <input type="file" accept="image/*" capture="environment" className="hidden"
+                                            disabled={uploading[key]}
+                                            onChange={e => handlePhoto(req.id, template.id, e)} />
+                                        </label>
+
+                                        {/* Choisir une photo (galerie) */}
+                                        <label className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed transition-all ${
+                                          uploading[key] ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400'
+                                        }`}>
+                                          <span className="text-base">🖼</span>
+                                          <span className="text-sm font-600 text-gray-600">
+                                            {uploading[key] ? 'Envoi...' : 'Choisir une photo'}
+                                          </span>
+                                          <input type="file" accept="image/*" className="hidden"
+                                            disabled={uploading[key]}
+                                            onChange={e => handlePhoto(req.id, template.id, e)} />
+                                        </label>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {isDone ? (
-                                    <span className="text-xs text-teal font-700">📸 fait</span>
-                                  ) : (
-                                    <>
-                                      <span className="text-xs text-amber-500 font-700">📸 requis</span>
-                                      <label className={`cursor-pointer bg-teal text-white text-xs font-700 px-3 py-1.5 rounded-lg hover:opacity-90 transition-all flex items-center gap-1 ${uploading[key] ? 'opacity-60 cursor-wait' : ''}`}>
-                                        <Camera size={12} />
-                                        {uploading[key] ? '...' : 'Photo'}
-                                        <input type="file" accept="image/*" className="hidden"
-                                          onChange={e => handlePhoto(req.id, template.id, e)} />
-                                      </label>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })}
+                              )
+                            })}
+                          </div>
                         </div>
 
                         {/* Bouton chat */}
