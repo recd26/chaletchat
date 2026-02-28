@@ -25,6 +25,7 @@ export default function ProDashboard() {
   const [starVal,    setStarVal]    = useState(0)
   const [starHover,  setStarHover]  = useState(0)
   const [chatRequest, setChatRequest] = useState(null)
+  const [openMission, setOpenMission] = useState(null) // id de la mission ouverte
   const [editRadius, setEditRadius] = useState(null)
   const [editingProfile, setEditingProfile] = useState(false)
   const [editAddr,     setEditAddr]     = useState('')
@@ -98,99 +99,181 @@ export default function ProDashboard() {
       {/* ── Onglet 0 : Demandes ── */}
       {tab === 0 && (
         <div>
-          {/* Missions actives en premier */}
-          {myActive.map(req => {
-            const tasks = req.chalet?.checklist_templates || []
-            const completions = req.checklist_completions || []
-            const done = completions.filter(c => c.is_done && c.photo_url).length
-            const pct = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0
+          {/* Missions actives */}
+          {myActive.length > 0 && (
+            <div className="mb-5">
+              <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">
+                Mes missions ({myActive.length})
+              </h2>
 
-            return (
-              <div key={req.id} className="card mb-4 border-teal border">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <span className="pill-active mb-2 inline-block">🔵 Mission en cours</span>
-                    <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
-                    <p className="text-xs text-gray-400">{req.chalet?.city}</p>
-                  </div>
-                  <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
-                </div>
+              {myActive.map(req => {
+                const tasks = req.chalet?.checklist_templates || []
+                const completions = req.checklist_completions || []
+                const done = completions.filter(c => c.is_done && c.photo_url).length
+                const pct = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0
+                const isOpen = openMission === req.id
 
-                {/* Détails accès (envoyés automatiquement) */}
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
-                  🔑 <strong>Détails d'accès reçus :</strong> {req.chalet?.address}
-                  {req.chalet?.access_code && ` • Code : ${req.chalet.access_code}`}
-                </div>
-
-                {/* Checklist avec photos */}
-                <p className="text-sm font-700 text-gray-800 mb-3">Checklist — Photo par pièce obligatoire 📸</p>
-                <div className="space-y-2 mb-4">
-                  {tasks.map(template => {
-                    const comp = completions.find(c => c.template_id === template.id)
-                    const isDone = comp?.is_done && comp?.photo_url
-                    const key = `${req.id}-${template.id}`
-
-                    return (
-                      <div key={template.id}
-                        className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                          isDone ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                        }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-800 ${
-                            isDone ? 'bg-teal border-teal text-white' : 'bg-white border-gray-200 text-gray-400'
-                          }`}>
-                            {isDone ? '✓' : ''}
-                          </div>
-                          <span className="text-sm font-600 text-gray-700">{template.room_name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isDone ? (
-                            <span className="text-xs text-teal font-700">📸 fait</span>
-                          ) : (
-                            <>
-                              <span className="text-xs text-amber-500 font-700">📸 requis</span>
-                              <label className={`cursor-pointer bg-teal text-white text-xs font-700 px-3 py-1.5 rounded-lg hover:opacity-90 transition-all flex items-center gap-1 ${uploading[key] ? 'opacity-60 cursor-wait' : ''}`}>
-                                <Camera size={12} />
-                                {uploading[key] ? '...' : 'Photo'}
-                                <input type="file" accept="image/*" className="hidden"
-                                  onChange={e => handlePhoto(req.id, template.id, e)} />
-                              </label>
-                            </>
-                          )}
-                        </div>
+                return (
+                  <div key={req.id} className="card mb-4 border-teal border">
+                    {/* En-tête compact (toujours visible) */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <span className="pill-active mb-2 inline-block">🔵 Mission en cours</span>
+                        <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
+                        <p className="text-xs text-gray-400">
+                          {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''} à {req.scheduled_time}
+                        </p>
                       </div>
-                    )
-                  })}
-                </div>
+                      <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
+                    </div>
 
-                {/* Progression */}
-                <div className="mb-3">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-gray-400">{done} / {tasks.length} pièces avec photos</span>
-                    <span className="text-teal font-700">{pct}%</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-teal to-teal-light rounded-full transition-all duration-500"
-                      style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
+                    {/* Barre de progression (toujours visible) */}
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-gray-400">{done} / {tasks.length} pièces complétées</span>
+                        <span className="text-teal font-700">{pct}%</span>
+                      </div>
+                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-teal to-teal-light rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
 
-                {pct === 100 && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 font-600">
-                    🎉 Checklist complète ! 💸 <strong>{req.agreed_price}$</strong> en cours de versement.
-                  </div>
-                )}
+                    {pct === 100 && (
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-sm text-green-700 font-600">
+                        🎉 Checklist complète ! 💸 <strong>{req.agreed_price}$</strong> en cours de versement.
+                      </div>
+                    )}
 
-                {/* Bouton chat */}
-                <button
-                  onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name })}
-                  className="btn-secondary text-xs flex items-center gap-2 mt-3"
-                >
-                  <MessageSquare size={14} /> Envoyer un message
-                </button>
-              </div>
-            )
-          })}
+                    {/* Bouton ouvrir / fermer */}
+                    <button
+                      onClick={() => setOpenMission(isOpen ? null : req.id)}
+                      className="btn-teal w-full py-3 text-sm font-700 mb-2"
+                    >
+                      {isOpen ? '▲ Fermer la mission' : `▼ Ouvrir la mission — Checklist & Photos`}
+                    </button>
+
+                    {/* Vue détaillée (quand ouvert) */}
+                    {isOpen && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        {/* Infos planification */}
+                        <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
+                          <span>🗓 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'long', day:'numeric', month:'long' }) : ''}</span>
+                          <span>⏰ {req.scheduled_time}</span>
+                          {req.deadline_time && <span>⏱ Limite : {req.deadline_time}</span>}
+                          {req.estimated_hours && <span>~{req.estimated_hours}h</span>}
+                        </div>
+
+                        {/* Détails accès */}
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs text-green-700 space-y-1">
+                          <p className="font-700">🔑 Détails d'accès</p>
+                          <p>📍 {req.chalet?.address}, {req.chalet?.city}</p>
+                          {req.chalet?.access_code && <p>🔑 Code porte : <strong>{req.chalet.access_code}</strong></p>}
+                          {req.chalet?.key_box && <p>📦 Boîte à clé : {req.chalet.key_box}</p>}
+                          {req.chalet?.parking_info && <p>🅿️ Stationnement : {req.chalet.parking_info}</p>}
+                          {req.chalet?.wifi_name && <p>🌐 Wi-Fi : {req.chalet.wifi_name} • {req.chalet.wifi_password}</p>}
+                          {req.chalet?.special_notes && <p>⚠️ Notes : {req.chalet.special_notes}</p>}
+                        </div>
+
+                        {/* Produits sur place */}
+                        {req.supplies_on_site?.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {req.supplies_on_site.map((s, i) => (
+                                <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
+                                  s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'
+                                }`}>{s.available ? '✓' : '✗'} {s.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Lavage */}
+                        {req.laundry_tasks?.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {req.laundry_tasks.map((l, i) => (
+                                <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Spa */}
+                        {req.spa_tasks?.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {req.spa_tasks.map((s, i) => (
+                                <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {req.special_notes && (
+                          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
+                            📝 {req.special_notes}
+                          </div>
+                        )}
+
+                        {/* Checklist avec photos */}
+                        <p className="text-sm font-700 text-gray-800 mb-3 mt-4">Checklist — Photo par pièce obligatoire 📸</p>
+                        <div className="space-y-2 mb-4">
+                          {tasks.map(template => {
+                            const comp = completions.find(c => c.template_id === template.id)
+                            const isDone = comp?.is_done && comp?.photo_url
+                            const key = `${req.id}-${template.id}`
+
+                            return (
+                              <div key={template.id}
+                                className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                                  isDone ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                                }`}>
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-800 ${
+                                    isDone ? 'bg-teal border-teal text-white' : 'bg-white border-gray-200 text-gray-400'
+                                  }`}>
+                                    {isDone ? '✓' : ''}
+                                  </div>
+                                  <span className="text-sm font-600 text-gray-700">{template.room_name}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isDone ? (
+                                    <span className="text-xs text-teal font-700">📸 fait</span>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs text-amber-500 font-700">📸 requis</span>
+                                      <label className={`cursor-pointer bg-teal text-white text-xs font-700 px-3 py-1.5 rounded-lg hover:opacity-90 transition-all flex items-center gap-1 ${uploading[key] ? 'opacity-60 cursor-wait' : ''}`}>
+                                        <Camera size={12} />
+                                        {uploading[key] ? '...' : 'Photo'}
+                                        <input type="file" accept="image/*" className="hidden"
+                                          onChange={e => handlePhoto(req.id, template.id, e)} />
+                                      </label>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Bouton chat */}
+                        <button
+                          onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name })}
+                          className="btn-secondary text-xs flex items-center gap-2"
+                        >
+                          <MessageSquare size={14} /> Envoyer un message au propriétaire
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Demandes ouvertes */}
           <div className="flex items-center justify-between mb-3 mt-5">
@@ -298,24 +381,54 @@ export default function ProDashboard() {
                   </div>
                 )}
 
-                {/* Faire une offre */}
-                <div className="flex gap-2 items-center">
-                  <div className="flex-1 relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-700 text-sm">$</span>
-                    <input
-                      type="number"
-                      placeholder="Votre prix"
-                      value={offerPrice[req.id] || ''}
-                      onChange={e => setOfferPrice(p => ({ ...p, [req.id]: e.target.value }))}
-                      className="input-field-teal pl-7"
-                    />
-                  </div>
-                  <button
-                    onClick={() => handleOffer(req.id)}
-                    className="btn-teal flex-shrink-0 whitespace-nowrap">
-                    💰 Faire une offre
-                  </button>
-                </div>
+                {/* Faire une offre / statut offre */}
+                {(() => {
+                  const myOffer = req.offers?.find(o => o.pro_id === profile?.id)
+                  if (myOffer?.status === 'accepted') {
+                    return (
+                      <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-600">
+                        ✅ Offre acceptée — {myOffer.price} $ • La mission apparaîtra dans vos missions actives.
+                      </div>
+                    )
+                  }
+                  if (myOffer?.status === 'pending') {
+                    return (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-700 text-amber-700">Offre envoyée — {myOffer.price} $</p>
+                          <p className="text-xs text-amber-500">En attente de réponse du propriétaire</p>
+                        </div>
+                        <span className="text-2xl">⏳</span>
+                      </div>
+                    )
+                  }
+                  if (myOffer?.status === 'declined') {
+                    return (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-400">
+                        Offre non retenue — {myOffer.price} $
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1 relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-700 text-sm">$</span>
+                        <input
+                          type="number"
+                          placeholder="Votre prix"
+                          value={offerPrice[req.id] || ''}
+                          onChange={e => setOfferPrice(p => ({ ...p, [req.id]: e.target.value }))}
+                          className="input-field-teal pl-7"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleOffer(req.id)}
+                        className="btn-teal flex-shrink-0 whitespace-nowrap">
+                        💰 Faire une offre
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             ))
           ) : null}

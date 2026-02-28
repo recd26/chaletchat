@@ -186,10 +186,29 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      {/* Offres */}
-                      {offers.length > 0 && (
+                      {/* Pro accepté (demande confirmée) */}
+                      {req.status === 'confirmed' && (() => {
+                        const accepted = offers.find(o => o.status === 'accepted')
+                        return accepted ? (
+                          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-lg text-white">🧹</div>
+                                <div>
+                                  <p className="text-sm font-700 text-gray-800">{accepted.pro?.first_name} {accepted.pro?.last_name}</p>
+                                  <p className="text-xs text-green-600 font-600">Offre acceptée</p>
+                                </div>
+                              </div>
+                              <p className="text-lg font-800 text-teal">{accepted.price} $</p>
+                            </div>
+                          </div>
+                        ) : null
+                      })()}
+
+                      {/* Offres en attente (seulement si demande ouverte) */}
+                      {req.status === 'open' && offers.filter(o => o.status === 'pending').length > 0 && (
                         <div>
-                          <p className="text-sm font-700 text-gray-800 mb-2">Offres reçues ({offers.length})</p>
+                          <p className="text-sm font-700 text-gray-800 mb-2">Offres reçues ({offers.filter(o => o.status === 'pending').length})</p>
                           {offers.filter(o => o.status === 'pending').map(offer => (
                             <div key={offer.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-2 hover:border-coral transition-all">
                               <div className="flex items-center gap-3">
