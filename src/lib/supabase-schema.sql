@@ -243,6 +243,19 @@ create policy "Pros can view chalets" on public.chalets
     exists (select 1 from public.profiles where id = auth.uid() and role = 'pro')
   );
 
+-- Checklist templates : le proprio du chalet gère, les pros voient
+create policy "Owner manages checklist templates" on public.checklist_templates
+  for all using (
+    exists (
+      select 1 from public.chalets c
+      where c.id = chalet_id and c.owner_id = auth.uid()
+    )
+  );
+create policy "Pros can view checklist templates" on public.checklist_templates
+  for select using (
+    exists (select 1 from public.profiles where id = auth.uid() and role = 'pro')
+  );
+
 -- Demandes : le proprio les gère, les pros les voient si 'open'
 create policy "Owner manages requests" on public.cleaning_requests
   for all using (auth.uid() = owner_id);
@@ -360,5 +373,27 @@ ALTER TABLE public.notifications
 ALTER TABLE public.notifications
   ADD CONSTRAINT notifications_type_check
   CHECK (type IN ('new_offer','offer_accepted','offer_declined','new_message','new_request_nearby','cleaning_completed'));
+
+-- Migration: policies RLS pour checklist_templates
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'checklist_templates' AND policyname = 'Owner manages checklist templates'
+  ) THEN
+    CREATE POLICY "Owner manages checklist templates" ON public.checklist_templates
+      FOR ALL USING (
+        EXISTS (SELECT 1 FROM public.chalets c WHERE c.id = chalet_id AND c.owner_id = auth.uid())
+      );
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'checklist_templates' AND policyname = 'Pros can view checklist templates'
+  ) THEN
+    CREATE POLICY "Pros can view checklist templates" ON public.checklist_templates
+      FOR SELECT USING (
+        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'pro')
+      );
+  END IF;
+END $$;
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
