@@ -5,15 +5,16 @@ import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Camera, CheckCircle, Star, Map, List, MessageSquare } from 'lucide-react'
 import ChatPanel from '../components/ChatPanel'
-import { Link } from 'react-router-dom'
+import { PROVINCES } from '../lib/constants'
+import { geocodeAddress } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
 const TABS = ['Demandes à proximité', 'Mon profil & vérification', 'Mes évaluations']
 
 export default function ProDashboard() {
-  const { profile } = useAuth()
-  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto } = useRequests()
+  const { profile, updateProfile } = useAuth()
+  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby } = useRequests()
   const { toasts, toast } = useToast()
 
   const [tab,        setTab]        = useState(0)
@@ -24,9 +25,16 @@ export default function ProDashboard() {
   const [starVal,    setStarVal]    = useState(0)
   const [starHover,  setStarHover]  = useState(0)
   const [chatRequest, setChatRequest] = useState(null)
+  const [editRadius, setEditRadius] = useState(null)
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [editAddr,     setEditAddr]     = useState('')
+  const [editCity,     setEditCity]     = useState('')
+  const [editProv,     setEditProv]     = useState('')
+  const [editPostal,   setEditPostal]   = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
 
-  // Demandes ouvertes (pas encore assignées à quelqu'un d'autre)
-  const openReqs = requests.filter(r => r.status === 'open')
+  // Demandes ouvertes filtrées par rayon
+  const openReqs = getOpenRequestsNearby(profile)
   // Mes missions en cours
   const myActive = requests.filter(r =>
     r.assigned_pro_id === profile?.id && ['confirmed','in_progress'].includes(r.status)
@@ -211,8 +219,9 @@ export default function ProDashboard() {
               <Suspense fallback={<div className="h-96 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400">🗺️ Chargement de la carte...</div>}>
                 <MapView
                   requests={openReqs}
-                  proZone={profile?.zone}
-                  radius={profile?.radius || '25'}
+                  proLat={profile?.lat}
+                  proLng={profile?.lng}
+                  radius={profile?.radius_km || 25}
                 />
               </Suspense>
               <p className="text-xs text-gray-400 text-center mt-2">Cliquez sur un 🏔 pour voir les détails</p>
@@ -343,8 +352,7 @@ export default function ProDashboard() {
             </div>
             {[
               { icon:'👤', label:'Nom complet', val: `${profile?.first_name || ''} ${profile?.last_name || ''}` },
-              { icon:'📍', label:'Zone de travail', val: profile?.zone || 'Non défini' },
-              { icon:'📏', label:'Rayon', val: `${profile?.radius_km || 25} km` },
+              { icon:'📍', label:'Adresse', val: [profile?.address, profile?.city, profile?.province, profile?.postal_code].filter(Boolean).join(', ') || 'Non définie' },
               { icon:'🗣️', label:'Langues', val: profile?.languages?.join(', ') || 'Non défini' },
             ].map(row => (
               <div key={row.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100 mb-2">
@@ -353,8 +361,89 @@ export default function ProDashboard() {
                 <span className="text-sm font-600 text-gray-800">{row.val}</span>
               </div>
             ))}
-              <Link to="/pro/editer"
-                className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier le profil</Link>
+
+            {/* Rayon éditable */}
+            <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100 mb-2">
+              <span>📏</span>
+              <span className="text-xs font-700 text-gray-400 w-28 flex-shrink-0">Rayon</span>
+              {editRadius !== null ? (
+                <div className="flex items-center gap-3 flex-1">
+                  <input type="range" min={5} max={100} step={5}
+                    value={editRadius}
+                    onChange={e => setEditRadius(parseInt(e.target.value))}
+                    className="flex-1 accent-teal" />
+                  <span className="text-sm font-700 text-teal w-14 text-right">{editRadius} km</span>
+                  <button onClick={async () => {
+                    try {
+                      await updateProfile({ radius_km: editRadius })
+                      toast('📏 Rayon mis à jour !', 'success')
+                      setEditRadius(null)
+                    } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                  }} className="text-xs font-700 text-white bg-teal px-3 py-1 rounded-lg">OK</button>
+                  <button onClick={() => setEditRadius(null)} className="text-xs text-gray-400">Annuler</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm font-600 text-gray-800">{profile?.radius_km || 25} km</span>
+                  <button onClick={() => setEditRadius(profile?.radius_km || 25)}
+                    className="text-xs text-teal font-600 hover:underline ml-2">Modifier</button>
+                </div>
+              )}
+            </div>
+
+            {/* Modifier adresse */}
+            {editingProfile ? (
+              <div className="mt-4 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <h4 className="text-sm font-700 text-gray-700 mb-3">Modifier l'adresse</h4>
+                <div className="mb-3">
+                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Adresse</label>
+                  <input className="input-field-teal" value={editAddr} onChange={e => setEditAddr(e.target.value)} placeholder="123 Rue Principale" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Ville</label>
+                    <input className="input-field-teal" value={editCity} onChange={e => setEditCity(e.target.value)} placeholder="Mont-Tremblant" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Province</label>
+                    <select className="input-field-teal" value={editProv} onChange={e => setEditProv(e.target.value)}>
+                      <option value="">Sélectionnez...</option>
+                      {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Code postal</label>
+                  <input className="input-field-teal w-40" value={editPostal} onChange={e => setEditPostal(e.target.value.toUpperCase())} placeholder="J8E 1T4" maxLength={7} />
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={savingProfile} onClick={async () => {
+                    if (!editAddr || !editCity || !editProv) return toast('⚠️ Remplissez tous les champs', 'error')
+                    setSavingProfile(true)
+                    try {
+                      const coords = await geocodeAddress({ address: editAddr, city: editCity, province: editProv, postalCode: editPostal })
+                      await updateProfile({
+                        address: editAddr, city: editCity, province: editProv, postal_code: editPostal,
+                        zone: editCity,
+                        lat: coords?.lat || null, lng: coords?.lng || null,
+                      })
+                      toast('✅ Adresse mise à jour !', 'success')
+                      setEditingProfile(false)
+                    } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                    finally { setSavingProfile(false) }
+                  }} className="btn-teal text-xs">{savingProfile ? '⏳...' : '💾 Sauvegarder'}</button>
+                  <button onClick={() => setEditingProfile(false)} className="btn-secondary text-xs">Annuler</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => {
+                setEditAddr(profile?.address || '')
+                setEditCity(profile?.city || '')
+                setEditProv(profile?.province || '')
+                setEditPostal(profile?.postal_code || '')
+                setEditingProfile(true)
+              }} className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier le profil</button>
+            )}
           </div>
         </div>
       )}

@@ -6,6 +6,8 @@ import StepIndicator from '../components/StepIndicator'
 import PasswordInput from '../components/PasswordInput'
 import UploadBox from '../components/UploadBox'
 import Toast from '../components/Toast'
+import { PROVINCES, isValidPostalCode } from '../lib/constants'
+import { geocodeAddress } from '../lib/geocode'
 
 // ── Étapes selon le rôle ────────────────────────────────────
 const STEPS_PROPRIO = ['Compte', 'Profil']
@@ -38,7 +40,10 @@ export default function Register() {
   const [locationType,setLocationType]= useState('Airbnb / Vrbo (courte durée)')
 
   // Pro profil
-  const [zone,        setZone]        = useState('')
+  const [proAddress,    setProAddress]    = useState('')
+  const [proCity,       setProCity]       = useState('')
+  const [proProvince,   setProProvince]   = useState('')
+  const [proPostalCode, setProPostalCode] = useState('')
   const [radius,      setRadius]      = useState('25')
   const [experience,  setExperience]  = useState('1 à 3 ans')
   const [languages,   setLanguages]   = useState('Français et Anglais')
@@ -72,6 +77,13 @@ export default function Register() {
       if (!province) return toast('⚠️ Sélectionnez une province', 'error')
       return true
     }
+    if (step === 2 && role === 'pro') {
+      if (!proAddress)  return toast('⚠️ Adresse requise', 'error')
+      if (!proCity)     return toast('⚠️ Ville requise', 'error')
+      if (!proProvince) return toast('⚠️ Province requise', 'error')
+      if (!isValidPostalCode(proPostalCode)) return toast('⚠️ Code postal invalide (ex: J8E 1T4)', 'error')
+      return true
+    }
     if (step === 3 && role === 'pro') {
       // Upload optionnel pour l'instant — on peut compléter plus tard
       return true
@@ -95,6 +107,16 @@ export default function Register() {
     if (busy) return
     setBusy(true)
     try {
+      // Geocoder l'adresse du pro
+      let proLat = null, proLng = null
+      if (role === 'pro') {
+        const coords = await geocodeAddress({
+          address: proAddress, city: proCity,
+          province: proProvince, postalCode: proPostalCode,
+        })
+        if (coords) { proLat = coords.lat; proLng = coords.lng }
+      }
+
       await signUp({
         email,
         password: pw,
@@ -104,8 +126,14 @@ export default function Register() {
         phone,
         // Profil pro
         ...(role === 'pro' && {
-          zone,
-          radius,
+          address: proAddress,
+          city: proCity,
+          province: proProvince,
+          postal_code: proPostalCode,
+          zone: proCity,
+          radius_km: parseInt(radius),
+          lat: proLat,
+          lng: proLng,
           experience,
           languages,
           bio,
@@ -224,12 +252,10 @@ export default function Register() {
             <h2 className="text-xl font-800 text-gray-900 mb-1">Votre profil propriétaire</h2>
             <p className="text-sm text-gray-400 mb-6">Parlez-nous de vos chalets.</p>
 
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province / Région principale</label>
+            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
               <select className={inputClass} value={province} onChange={e=>setProvince(e.target.value)}>
                 <option value="">Sélectionnez...</option>
-                <option>Québec — Laurentides</option><option>Québec — Charlevoix</option>
-                <option>Québec — Cantons-de-l'Est</option><option>Québec — Lanaudière</option>
-                <option>Ontario</option><option>Colombie-Britannique</option><option>Autre</option>
+                {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
               </select></div>
             <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Nombre de chalets</label>
               <select className={inputClass} value={chaletCount} onChange={e=>setChaletCount(e.target.value)}>
@@ -253,27 +279,35 @@ export default function Register() {
             <h2 className="text-xl font-800 text-gray-900 mb-1">Votre profil professionnel</h2>
             <p className="text-sm text-gray-400 mb-6">Aidez les propriétaires à vous trouver.</p>
 
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Zone de travail principale</label>
-              <select className={inputClass} value={zone} onChange={e=>setZone(e.target.value)}>
-                <option value="">Sélectionnez une région...</option>
-                <option>Laurentides — Mont-Tremblant</option><option>Laurentides — Saint-Donat</option>
-                <option>Charlevoix</option><option>Cantons-de-l'Est</option>
-                <option>Lanaudière</option><option>Outaouais</option><option>Autre</option>
-              </select></div>
+            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Adresse</label>
+              <input className={inputClass} placeholder="123 Rue Principale" value={proAddress} onChange={e=>setProAddress(e.target.value)} /></div>
             <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Ville</label>
+                <input className={inputClass} placeholder="Mont-Tremblant" value={proCity} onChange={e=>setProCity(e.target.value)} /></div>
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
+                <select className={inputClass} value={proProvince} onChange={e=>setProProvince(e.target.value)}>
+                  <option value="">Sélectionnez...</option>
+                  {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Code postal</label>
+                <input className={inputClass} placeholder="J8E 1T4" maxLength={7} value={proPostalCode} onChange={e=>setProPostalCode(e.target.value.toUpperCase())} /></div>
               <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Rayon de déplacement</label>
                 <select className={inputClass} value={radius} onChange={e=>setRadius(e.target.value)}>
                   <option>10</option><option>25</option><option>50</option><option>75</option>
                 </select></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
               <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Expérience</label>
                 <select className={inputClass} value={experience} onChange={e=>setExperience(e.target.value)}>
                   <option>Moins de 1 an</option><option>1 à 3 ans</option><option>3 à 5 ans</option><option>5 ans et plus</option>
                 </select></div>
+              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Langues</label>
+                <select className={inputClass} value={languages} onChange={e=>setLanguages(e.target.value)}>
+                  <option>Français seulement</option><option>Français et Anglais</option><option>Anglais seulement</option>
+                </select></div>
             </div>
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Langues</label>
-              <select className={inputClass} value={languages} onChange={e=>setLanguages(e.target.value)}>
-                <option>Français seulement</option><option>Français et Anglais</option><option>Anglais seulement</option>
-              </select></div>
             <div className="mb-4"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Bio courte</label>
               <textarea className={`${inputClass} min-h-20 resize-none`} placeholder="Ex: Professionnelle du ménage avec 3 ans d'expérience dans les chalets des Laurentides..."
                 value={bio} onChange={e=>setBio(e.target.value)} /></div>

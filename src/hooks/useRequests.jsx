@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
+import { haversineDistance } from '../lib/geocode'
 
 async function sendNotification({ userId, type, title, body, requestId, senderId }) {
   await supabase.from('notifications').insert({
@@ -170,5 +171,19 @@ export function useRequests() {
     return publicUrl
   }
 
-  return { requests, loading, createRequest, acceptOffer, submitOffer, updateChecklistItem, uploadRoomPhoto, refetch: fetchRequests }
+  function getOpenRequestsNearby(proProfile) {
+    const openReqs = requests.filter(r => r.status === 'open')
+    if (!proProfile || proProfile.role !== 'pro' || !proProfile.lat || !proProfile.lng) return openReqs
+    const radiusKm = proProfile.radius_km || 25
+    return openReqs.filter(req => {
+      if (!req.chalet?.lat || !req.chalet?.lng) return true
+      const dist = haversineDistance(
+        { lat: proProfile.lat, lng: proProfile.lng },
+        { lat: req.chalet.lat, lng: req.chalet.lng }
+      )
+      return dist <= radiusKm
+    })
+  }
+
+  return { requests, loading, createRequest, acceptOffer, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, refetch: fetchRequests }
 }

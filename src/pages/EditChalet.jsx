@@ -3,11 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useChalets } from '../hooks/useChalets'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-
-const PROVINCES = [
-  'Québec — Laurentides', 'Québec — Charlevoix', 'Québec — Cantons-de-l\'Est',
-  'Québec — Lanaudière', 'Québec — Outaouais', 'Ontario', 'Colombie-Britannique', 'Autre',
-]
+import { PROVINCES } from '../lib/constants'
+import { geocodeAddress } from '../lib/geocode'
 
 const TABS = ['📋 Infos', '🔑 Accès', '✅ Checklist']
 
@@ -25,7 +22,8 @@ export default function EditChalet() {
   const [name,      setName]      = useState('')
   const [address,   setAddress]   = useState('')
   const [city,      setCity]      = useState('')
-  const [province,  setProvince]  = useState('')
+  const [province,    setProvince]    = useState('')
+  const [postalCode,  setPostalCode]  = useState('')
   const [bedrooms,  setBedrooms]  = useState('2')
   const [bathrooms, setBathrooms] = useState('1')
 
@@ -47,6 +45,7 @@ export default function EditChalet() {
     setAddress(chalet.address || '')
     setCity(chalet.city || '')
     setProvince(chalet.province || '')
+    setPostalCode(chalet.postal_code || '')
     setBedrooms(String(chalet.bedrooms || 2))
     setBathrooms(String(chalet.bathrooms || 1))
     setAccessCode(chalet.access_code || '')
@@ -68,7 +67,15 @@ export default function EditChalet() {
     if (!name || !address || !city) return toast('⚠️ Remplissez tous les champs obligatoires', 'error')
     setBusy(true)
     try {
-      await updateChalet(id, { name, address, city, province, bedrooms: parseInt(bedrooms), bathrooms: parseInt(bathrooms) })
+      const coords = await geocodeAddress({ address, city, province, postalCode })
+      await updateChalet(id, {
+        name, address, city, province,
+        postal_code: postalCode,
+        lat: coords?.lat || null,
+        lng: coords?.lng || null,
+        bedrooms: parseInt(bedrooms),
+        bathrooms: parseInt(bathrooms),
+      })
       toast('✅ Informations sauvegardées !', 'success')
     } catch (err) { toast(`❌ ${err.message}`, 'error') }
     finally { setBusy(false) }
@@ -139,9 +146,13 @@ export default function EditChalet() {
               <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
               <select className="input-field" value={province} onChange={e=>setProvince(e.target.value)}>
                 <option value="">Sélectionnez...</option>
-                {PROVINCES.map(p => <option key={p}>{p}</option>)}
+                {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
+          </div>
+          <div className="mb-4">
+            <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Code postal</label>
+            <input className="input-field w-40" placeholder="J8E 1T4" maxLength={7} value={postalCode} onChange={e=>setPostalCode(e.target.value.toUpperCase())} />
           </div>
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div>

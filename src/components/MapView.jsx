@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { haversineDistance } from '../lib/geocode'
 
 // Fix Leaflet default marker icons
 delete L.Icon.Default.prototype._getIconUrl
@@ -52,43 +53,22 @@ const proIcon = new L.DivIcon({
   className: '',
 })
 
-export default function MapView({ requests = [], proZone = null, radius = 25 }) {
+export default function MapView({ requests = [], proLat = null, proLng = null, radius = 25 }) {
   const [center, setCenter] = useState([46.8, -71.2]) // Québec par défaut
 
-  // Coordonnées simulées par région (en prod, on utiliserait une vraie API de géocodage)
-  const ZONE_COORDS = {
-    'Laurentides':           [46.05, -74.5],
-    'Charlevoix':            [47.5,  -70.5],
-    'Cantons-de-l\'Est':    [45.4,  -72.1],
-    'Lanaudière':            [46.1,  -73.5],
-    'Outaouais':             [45.7,  -75.7],
-    'Montréal':              [45.5,  -73.6],
-    'Québec (ville)':        [46.8,  -71.2],
-    'Ontario':               [43.7,  -79.4],
-    'Alma':                  [48.5,  -71.6],
-    'Mont-Tremblant':        [46.1,  -74.6],
-    'Saint-Sauveur':         [45.9,  -74.2],
-  }
-
   useEffect(() => {
-    if (proZone && ZONE_COORDS[proZone]) {
-      setCenter(ZONE_COORDS[proZone])
+    if (proLat && proLng) {
+      setCenter([proLat, proLng])
     } else if (requests.length > 0) {
-      // Centrer sur la première demande
-      const first = requests[0]
-      const coords = ZONE_COORDS[first?.chalet?.city] || ZONE_COORDS[first?.chalet?.province] || [46.8, -71.2]
-      setCenter(coords)
+      const first = requests.find(r => r.chalet?.lat && r.chalet?.lng)
+      if (first) setCenter([first.chalet.lat, first.chalet.lng])
     }
-  }, [proZone, requests])
+  }, [proLat, proLng, requests])
 
-  // Assigner des coordonnées aux demandes
-  const requestsWithCoords = requests.map(req => {
-    const city = req?.chalet?.city || ''
-    const coords = ZONE_COORDS[city] ||
-      Object.entries(ZONE_COORDS).find(([k]) => city.toLowerCase().includes(k.toLowerCase()))?.[1] ||
-      [center[0] + (Math.random()-0.5)*0.5, center[1] + (Math.random()-0.5)*0.5]
-    return { ...req, coords }
-  })
+  // Ne garder que les demandes avec coordonnées
+  const requestsWithCoords = requests
+    .filter(req => req.chalet?.lat && req.chalet?.lng)
+    .map(req => ({ ...req, coords: [req.chalet.lat, req.chalet.lng] }))
 
   return (
     <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: '420px' }}>
@@ -104,21 +84,21 @@ export default function MapView({ requests = [], proZone = null, radius = 25 }) 
         />
 
         {/* Cercle de rayon du pro */}
-        {proZone && ZONE_COORDS[proZone] && (
+        {proLat && proLng && (
           <Circle
-            center={ZONE_COORDS[proZone]}
+            center={[proLat, proLng]}
             radius={parseInt(radius) * 1000}
             pathOptions={{ color: '#0D9488', fillColor: '#0D9488', fillOpacity: 0.08, weight: 2, dashArray: '6 4' }}
           />
         )}
 
         {/* Position du pro */}
-        {proZone && ZONE_COORDS[proZone] && (
-          <Marker position={ZONE_COORDS[proZone]} icon={proIcon}>
+        {proLat && proLng && (
+          <Marker position={[proLat, proLng]} icon={proIcon}>
             <Popup>
               <div className="text-center">
-                <p className="font-700 text-gray-900">📍 Votre zone</p>
-                <p className="text-xs text-gray-400">{proZone} • {radius} km</p>
+                <p className="font-700 text-gray-900">📍 Votre position</p>
+                <p className="text-xs text-gray-400">{radius} km de rayon</p>
               </div>
             </Popup>
           </Marker>
@@ -135,6 +115,14 @@ export default function MapView({ requests = [], proZone = null, radius = 25 }) 
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
                   📍 {req.chalet?.city || 'Ville inconnue'}
                 </p>
+                {proLat && proLng && (
+                  <p style={{ fontSize: '12px', color: '#0D9488', fontWeight: '600', marginBottom: '4px' }}>
+                    📏 {haversineDistance(
+                      { lat: proLat, lng: proLng },
+                      { lat: req.chalet.lat, lng: req.chalet.lng }
+                    ).toFixed(1)} km
+                  </p>
+                )}
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
                   🗓 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA') : 'Date à confirmer'}
                 </p>

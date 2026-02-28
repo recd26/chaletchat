@@ -16,6 +16,12 @@ create table public.profiles (
   phone       text,
   avatar_url  text,
   bio         text,
+  -- Adresse (PRO principalement)
+  address     text,
+  city        text,
+  postal_code text,
+  lat         double precision,
+  lng         double precision,
   -- Champs spécifiques PRO
   zone        text,
   radius_km   int default 25,
@@ -42,6 +48,9 @@ create table public.chalets (
   address     text not null,
   city        text not null,
   province    text not null,
+  postal_code text,
+  lat         double precision,
+  lng         double precision,
   bedrooms    int default 1,
   bathrooms   int default 1,
   -- Accès sécurisé (chiffré côté client idéalement)
@@ -318,5 +327,19 @@ create table public.notifications (
 -- 1. "cleaning-photos"  (public)   → photos des pièces après ménage
 -- 2. "id-documents"     (private)  → selfies et pièces d'identité
 -- 3. "avatars"          (public)   → photos de profil
+
+-- ─── MIGRATION : Ajout adresse et coordonnées ──────────────────
+-- Exécutez ces ALTER TABLE sur une base existante pour ajouter les nouvelles colonnes.
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS address     text,
+  ADD COLUMN IF NOT EXISTS city        text,
+  ADD COLUMN IF NOT EXISTS postal_code text,
+  ADD COLUMN IF NOT EXISTS lat         double precision,
+  ADD COLUMN IF NOT EXISTS lng         double precision;
+
+ALTER TABLE public.chalets
+  ADD COLUMN IF NOT EXISTS postal_code text,
+  ADD COLUMN IF NOT EXISTS lat         double precision,
+  ADD COLUMN IF NOT EXISTS lng         double precision;
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
