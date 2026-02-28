@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const { chalets, loading: loadChalets } = useChalets()
   const { requests, loading: loadReqs, acceptOffer } = useRequests()
   const { toasts, toast } = useToast()
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
   const [showCode, setShowCode] = useState({})
   const [chatRequest, setChatRequest] = useState(null)
@@ -46,8 +47,7 @@ export default function Dashboard() {
       setTab(2)
       return
     }
-    // Navigate to nouvelle-demande (route to be created)
-    window.location.href = '/nouvelle-demande'
+    navigate('/nouvelle-demande')
   }
 
   async function handleAccept(requestId, offerId, proId, price) {
@@ -142,10 +142,29 @@ export default function Dashboard() {
                   {req && (
                     <>
                       {/* Info demande */}
-                      <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-4">
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
                         <span>🗓 {new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
                         <span>⏰ {req.scheduled_time}</span>
                         {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
+                      </div>
+
+                      {/* Résumé produits / lavage / spa */}
+                      <div className="flex flex-wrap gap-2 mb-4 text-xs">
+                        {req.supplies_on_site?.length > 0 && (
+                          <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
+                            🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits dispo
+                          </span>
+                        )}
+                        {req.laundry_tasks?.length > 0 && (
+                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
+                            🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {req.spa_tasks?.length > 0 && (
+                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
+                            ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
+                          </span>
+                        )}
                       </div>
 
                       {/* Checklist progress */}

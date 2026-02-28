@@ -11,6 +11,7 @@ import ProDashboard from './pages/ProDashboard'
 import Paiement     from './pages/Paiement'
 import NewChalet    from './pages/NewChalet'
 import EditChalet   from './pages/EditChalet'
+import NewRequest   from './pages/NewRequest'
 
 // Redirige après connexion selon le rôle
 function RoleRedirect() {
@@ -43,6 +44,11 @@ function AppRoutes() {
         <Route path="/nouveau-chalet" element={
           <ProtectedRoute requiredRole="proprio">
             <NewChalet />
+          </ProtectedRoute>
+        } />
+        <Route path="/nouvelle-demande" element={
+          <ProtectedRoute requiredRole="proprio">
+            <NewRequest />
           </ProtectedRoute>
         } />
         <Route path="/chalet/:id/editer" element={

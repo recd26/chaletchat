@@ -247,12 +247,56 @@ export default function ProDashboard() {
                   {req.is_urgent && <span className="pill-coral">🔴 Urgent</span>}
                 </div>
 
-                <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-4">
+                <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
                   <span>🗓 {new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
                   <span>⏰ {req.scheduled_time}</span>
                   {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
                   <span>📸 Photo par pièce</span>
                 </div>
+
+                {/* Produits sur place */}
+                {req.supplies_on_site?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {req.supplies_on_site.map((s, i) => (
+                        <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
+                          s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200 line-through'
+                        }`}>{s.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lavage */}
+                {req.laundry_tasks?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {req.laundry_tasks.map((l, i) => (
+                        <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Spa */}
+                {req.spa_tasks?.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {req.spa_tasks.map((s, i) => (
+                        <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {req.special_notes && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
+                    📝 {req.special_notes}
+                  </div>
+                )}
 
                 {/* Faire une offre */}
                 <div className="flex gap-2 items-center">

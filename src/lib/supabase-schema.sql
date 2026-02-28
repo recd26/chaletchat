@@ -19,6 +19,7 @@ create table public.profiles (
   -- Adresse (PRO principalement)
   address     text,
   city        text,
+  province    text,
   postal_code text,
   lat         double precision,
   lng         double precision,
@@ -87,6 +88,10 @@ create table public.cleaning_requests (
   status  text not null default 'open'
     check (status in ('open','offers_received','confirmed','in_progress','completed','cancelled')),
   is_urgent boolean default false,
+  special_notes       text,
+  supplies_on_site    jsonb default '[]',
+  laundry_tasks       jsonb default '[]',
+  spa_tasks           jsonb default '[]',
   -- Paiement
   agreed_price        numeric(10,2),
   stripe_payment_intent_id text,
@@ -333,6 +338,7 @@ create table public.notifications (
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS address     text,
   ADD COLUMN IF NOT EXISTS city        text,
+  ADD COLUMN IF NOT EXISTS province    text,
   ADD COLUMN IF NOT EXISTS postal_code text,
   ADD COLUMN IF NOT EXISTS lat         double precision,
   ADD COLUMN IF NOT EXISTS lng         double precision;
@@ -341,5 +347,11 @@ ALTER TABLE public.chalets
   ADD COLUMN IF NOT EXISTS postal_code text,
   ADD COLUMN IF NOT EXISTS lat         double precision,
   ADD COLUMN IF NOT EXISTS lng         double precision;
+
+ALTER TABLE public.cleaning_requests
+  ADD COLUMN IF NOT EXISTS special_notes    text,
+  ADD COLUMN IF NOT EXISTS supplies_on_site jsonb default '[]',
+  ADD COLUMN IF NOT EXISTS laundry_tasks    jsonb default '[]',
+  ADD COLUMN IF NOT EXISTS spa_tasks        jsonb default '[]';
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
