@@ -276,9 +276,15 @@ create policy "Owner sees offers on own requests" on public.offers
     )
   );
 
--- Checklist completions : le pro assigné peut modifier
+-- Checklist completions : le pro assigné peut tout faire (select, insert, update, delete)
 create policy "Assigned pro manages checklist" on public.checklist_completions
   for all using (
+    exists (
+      select 1 from public.cleaning_requests cr
+      where cr.id = request_id and cr.assigned_pro_id = auth.uid()
+    )
+  )
+  with check (
     exists (
       select 1 from public.cleaning_requests cr
       where cr.id = request_id and cr.assigned_pro_id = auth.uid()

@@ -143,13 +143,16 @@ export function useRequests() {
   }
 
   async function updateChecklistItem(requestId, templateId, isDone, photoUrl = null) {
-    const { error } = await supabase.from('checklist_completions').upsert({
-      request_id: requestId,
-      template_id: templateId,
-      is_done: isDone,
-      photo_url: photoUrl,
-      completed_at: isDone ? new Date().toISOString() : null,
-    })
+    const { error } = await supabase.from('checklist_completions').upsert(
+      {
+        request_id: requestId,
+        template_id: templateId,
+        is_done: isDone,
+        photo_url: photoUrl,
+        completed_at: isDone ? new Date().toISOString() : null,
+      },
+      { onConflict: 'request_id,template_id' }
+    )
     if (error) throw error
     await fetchRequests()
   }
