@@ -215,6 +215,7 @@ alter table public.offers                 enable row level security;
 alter table public.checklist_completions  enable row level security;
 alter table public.reviews                enable row level security;
 alter table public.messages               enable row level security;
+alter table public.notifications          enable row level security;
 
 -- Profils : visible par tous, modifiable seulement par soi-même
 create policy "Profiles are public"   on public.profiles for select using (true);
@@ -282,6 +283,35 @@ create policy "Participants see messages" on public.messages
   );
 create policy "Participants send messages" on public.messages
   for insert with check (auth.uid() = sender_id);
+create policy "Participants update messages" on public.messages
+  for update using (
+    exists (
+      select 1 from public.cleaning_requests cr
+      where cr.id = request_id
+        and (cr.owner_id = auth.uid() or cr.assigned_pro_id = auth.uid())
+    )
+  );
+
+-- Notifications
+create policy "Users see own notifications" on public.notifications
+  for select using (auth.uid() = user_id);
+create policy "Users update own notifications" on public.notifications
+  for update using (auth.uid() = user_id);
+create policy "Authenticated users create notifications" on public.notifications
+  for insert with check (true);
+
+-- ─── NOTIFICATIONS ──────────────────────────────────────────
+create table public.notifications (
+  id          uuid default uuid_generate_v4() primary key,
+  user_id     uuid references public.profiles(id) on delete cascade not null,
+  type        text not null check (type in ('new_offer','offer_accepted','offer_declined','new_message')),
+  title       text not null,
+  body        text,
+  request_id  uuid references public.cleaning_requests(id) on delete cascade,
+  sender_id   uuid references public.profiles(id),
+  read_at     timestamptz,
+  created_at  timestamptz default now()
+);
 
 -- ─── STORAGE BUCKETS ─────────────────────────────────────────
 -- Créez ces buckets dans : Supabase Dashboard → Storage

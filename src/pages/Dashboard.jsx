@@ -5,7 +5,8 @@ import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Plus, Lock, Eye, EyeOff } from 'lucide-react'
+import { Plus, Lock, Eye, EyeOff, MessageSquare } from 'lucide-react'
+import ChatPanel from '../components/ChatPanel'
 
 const TABS = ['Mes chalets', '🔑 Accès', '💳 Paiement']
 
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const { toasts, toast } = useToast()
   const [tab, setTab] = useState(0)
   const [showCode, setShowCode] = useState({})
+  const [chatRequest, setChatRequest] = useState(null)
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
@@ -166,6 +168,16 @@ export default function Dashboard() {
                           ))}
                         </div>
                       )}
+
+                      {/* Bouton chat si pro assigne */}
+                      {req.assigned_pro_id && (
+                        <button
+                          onClick={() => setChatRequest({ id: req.id, chaletName: chalet.name })}
+                          className="btn-secondary text-xs flex items-center gap-2 mt-3"
+                        >
+                          <MessageSquare size={14} /> Envoyer un message
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -258,6 +270,14 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {chatRequest && (
+        <ChatPanel
+          requestId={chatRequest.id}
+          chaletName={chatRequest.chaletName}
+          onClose={() => setChatRequest(null)}
+        />
       )}
 
       <Toast toasts={toasts} />

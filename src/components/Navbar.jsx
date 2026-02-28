@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LogOut, Home } from 'lucide-react'
+import NotificationBell from './NotificationBell'
 
 export default function Navbar() {
   const { user, profile, signOut } = useAuth()
@@ -37,6 +38,8 @@ export default function Navbar() {
             <Link to="/paiement" className="text-sm font-600 text-gray-600 hover:text-gray-900 transition-colors">
               Paiement
             </Link>
+
+            <NotificationBell />
 
             {/* Avatar + nom */}
             <div className="flex items-center gap-2">

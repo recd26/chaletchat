@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 
+async function sendNotification({ userId, type, title, body, requestId, senderId }) {
+  await supabase.from('notifications').insert({
+    user_id: userId,
+    type,
+    title,
+    body,
+    request_id: requestId,
+    sender_id: senderId,
+  })
+}
+
 export function useRequests() {
   const { user, profile } = useAuth()
   const [requests, setRequests] = useState([])
@@ -70,7 +81,7 @@ export function useRequests() {
     // 2. Refuse les autres offres
     await supabase.from('offers').update({ status: 'declined' })
       .eq('request_id', requestId).neq('id', offerId)
-    // 3. Met à jour la demande
+    // 3. Met a jour la demande
     const { error } = await supabase.from('cleaning_requests').update({
       assigned_pro_id: proId,
       agreed_price: price,
@@ -78,6 +89,31 @@ export function useRequests() {
       access_sent_at: new Date().toISOString(),
     }).eq('id', requestId)
     if (error) throw error
+
+    // Notifier le pro accepte
+    const request = requests.find(r => r.id === requestId)
+    sendNotification({
+      userId: proId,
+      type: 'offer_accepted',
+      title: 'Offre acceptee !',
+      body: `${price} $ — ${request?.chalet?.name || 'Chalet'}`,
+      requestId,
+      senderId: user.id,
+    })
+
+    // Notifier les pros refuses
+    const declinedOffers = request?.offers?.filter(o => o.id !== offerId && o.pro_id !== proId) || []
+    for (const offer of declinedOffers) {
+      sendNotification({
+        userId: offer.pro_id,
+        type: 'offer_declined',
+        title: 'Offre non retenue',
+        body: `Pour ${request?.chalet?.name || 'un chalet'}`,
+        requestId,
+        senderId: user.id,
+      })
+    }
+
     await fetchRequests()
   }
 
@@ -90,6 +126,20 @@ export function useRequests() {
       status: 'pending',
     })
     if (error) throw error
+
+    // Notifier le proprio
+    const request = requests.find(r => r.id === requestId)
+    if (request?.owner_id) {
+      sendNotification({
+        userId: request.owner_id,
+        type: 'new_offer',
+        title: `Nouvelle offre de ${profile.first_name}`,
+        body: `${price} $ pour ${request.chalet?.name || 'votre chalet'}`,
+        requestId,
+        senderId: user.id,
+      })
+    }
+
     await fetchRequests()
   }
 

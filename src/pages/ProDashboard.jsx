@@ -3,7 +3,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Camera, CheckCircle, Star, Map, List } from 'lucide-react'
+import { Camera, CheckCircle, Star, Map, List, MessageSquare } from 'lucide-react'
+import ChatPanel from '../components/ChatPanel'
 import { Link } from 'react-router-dom'
 
 const MapView = lazy(() => import('../components/MapView'))
@@ -22,6 +23,7 @@ export default function ProDashboard() {
   const [uploading,  setUploading]  = useState({})
   const [starVal,    setStarVal]    = useState(0)
   const [starHover,  setStarHover]  = useState(0)
+  const [chatRequest, setChatRequest] = useState(null)
 
   // Demandes ouvertes (pas encore assignées à quelqu'un d'autre)
   const openReqs = requests.filter(r => r.status === 'open')
@@ -170,6 +172,14 @@ export default function ProDashboard() {
                     🎉 Checklist complète ! 💸 <strong>{req.agreed_price}$</strong> en cours de versement.
                   </div>
                 )}
+
+                {/* Bouton chat */}
+                <button
+                  onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name })}
+                  className="btn-secondary text-xs flex items-center gap-2 mt-3"
+                >
+                  <MessageSquare size={14} /> Envoyer un message
+                </button>
               </div>
             )
           })}
@@ -384,6 +394,14 @@ export default function ProDashboard() {
             ))}
           </div>
         </div>
+      )}
+
+      {chatRequest && (
+        <ChatPanel
+          requestId={chatRequest.id}
+          chaletName={chatRequest.chaletName}
+          onClose={() => setChatRequest(null)}
+        />
       )}
 
       <Toast toasts={toasts} />
