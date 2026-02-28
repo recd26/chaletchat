@@ -162,7 +162,7 @@ export function useRequests() {
     const { error: upErr } = await supabase.storage
       .from('cleaning-photos')
       .upload(path, file, { upsert: true })
-    if (upErr) throw upErr
+    if (upErr) throw new Error(`Storage: ${upErr.message}`)
 
     const { data: { publicUrl } } = supabase.storage
       .from('cleaning-photos')

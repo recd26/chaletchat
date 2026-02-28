@@ -347,10 +347,38 @@ create table public.notifications (
 );
 
 -- ─── STORAGE BUCKETS ─────────────────────────────────────────
--- Créez ces buckets dans : Supabase Dashboard → Storage
 -- 1. "cleaning-photos"  (public)   → photos des pièces après ménage
 -- 2. "id-documents"     (private)  → selfies et pièces d'identité
 -- 3. "avatars"          (public)   → photos de profil
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('cleaning-photos', 'cleaning-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('id-documents', 'id-documents', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies : cleaning-photos
+CREATE POLICY "Auth users can upload cleaning photos"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'cleaning-photos' AND auth.role() = 'authenticated');
+
+CREATE POLICY "Public can view cleaning photos"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'cleaning-photos');
+
+CREATE POLICY "Auth users can update cleaning photos"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'cleaning-photos' AND auth.role() = 'authenticated');
+
+CREATE POLICY "Auth users can delete cleaning photos"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'cleaning-photos' AND auth.role() = 'authenticated');
 
 -- ─── MIGRATION : Ajout adresse et coordonnées ──────────────────
 -- Exécutez ces ALTER TABLE sur une base existante pour ajouter les nouvelles colonnes.
@@ -401,5 +429,32 @@ DO $$ BEGIN
       );
   END IF;
 END $$;
+
+-- Migration: fix RLS checklist_completions (WITH CHECK requis pour INSERT/UPSERT)
+DROP POLICY IF EXISTS "Assigned pro manages checklist" ON public.checklist_completions;
+CREATE POLICY "Assigned pro manages checklist" ON public.checklist_completions
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.cleaning_requests cr
+      WHERE cr.id = request_id AND cr.assigned_pro_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.cleaning_requests cr
+      WHERE cr.id = request_id AND cr.assigned_pro_id = auth.uid()
+    )
+  );
+
+-- Migration: assurer que le proprio peut aussi voir les completions
+DROP POLICY IF EXISTS "Owner views checklist" ON public.checklist_completions;
+CREATE POLICY "Owner views checklist" ON public.checklist_completions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.cleaning_requests cr
+      JOIN public.chalets c ON c.id = cr.chalet_id
+      WHERE cr.id = request_id AND c.owner_id = auth.uid()
+    )
+  );
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
