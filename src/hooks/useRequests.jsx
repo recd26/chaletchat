@@ -33,7 +33,7 @@ export function useRequests() {
         .from('cleaning_requests')
         .select(`
           *,
-          chalet:chalets(*),
+          chalet:chalets(*, checklist_templates(*)),
           offers(*,pro:profiles(*)),
           checklist_completions(*)
         `)
