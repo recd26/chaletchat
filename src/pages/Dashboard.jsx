@@ -5,7 +5,7 @@ import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard } from 'lucide-react'
+import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages } from 'lucide-react'
 import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
@@ -25,6 +25,7 @@ export default function Dashboard() {
     profile?.stripe_customer_id ? { last4: '4242', brand: 'Visa', name: profile.first_name } : null
   )
   const [showCardForm, setShowCardForm] = useState(false)
+  const [viewingPro, setViewingPro] = useState(null) // profil pro à afficher
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
@@ -226,7 +227,11 @@ export default function Dashboard() {
                                     className="text-xs font-700 bg-coral text-white px-3 py-1.5 rounded-lg hover:bg-coral-dark transition-all">
                                     Accepter
                                   </button>
-                                  <button className="text-xs font-600 bg-gray-100 text-gray-400 px-3 py-1.5 rounded-lg">Profil</button>
+                                  <button
+                                    onClick={() => setViewingPro(offer.pro)}
+                                    className="text-xs font-600 bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all">
+                                    Profil
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -379,6 +384,81 @@ export default function Dashboard() {
           chaletName={chatRequest.chaletName}
           onClose={() => setChatRequest(null)}
         />
+      )}
+
+      {/* Modal profil professionnel */}
+      {viewingPro && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setViewingPro(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-gradient-to-br from-teal to-teal-light p-6 text-white relative">
+              <button onClick={() => setViewingPro(null)} className="absolute top-3 right-3 text-white/70 hover:text-white">
+                <X size={20} />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-3xl">
+                  {viewingPro.avatar_url
+                    ? <img src={viewingPro.avatar_url} alt="" className="w-16 h-16 rounded-full object-cover" />
+                    : '👩'
+                  }
+                </div>
+                <div>
+                  <h2 className="text-xl font-800">{viewingPro.first_name} {viewingPro.last_name}</h2>
+                  <p className="text-white/80 text-sm">
+                    {viewingPro.verif_status === 'approved' ? '✅ Identité vérifiée' : '⏳ Vérification en cours'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenu */}
+            <div className="p-5 space-y-4">
+              {/* Localisation */}
+              {(viewingPro.city || viewingPro.province) && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <MapPin size={16} className="text-teal flex-shrink-0" />
+                  <span>{[viewingPro.city, viewingPro.province].filter(Boolean).join(', ')}</span>
+                </div>
+              )}
+
+              {/* Expérience */}
+              {viewingPro.experience && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Clock size={16} className="text-teal flex-shrink-0" />
+                  <span>{viewingPro.experience}</span>
+                </div>
+              )}
+
+              {/* Langues */}
+              {viewingPro.languages?.length > 0 && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Languages size={16} className="text-teal flex-shrink-0" />
+                  <span>{viewingPro.languages.join(', ')}</span>
+                </div>
+              )}
+
+              {/* Bio */}
+              {viewingPro.bio && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs font-700 text-gray-400 uppercase mb-1.5">À propos</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{viewingPro.bio}</p>
+                </div>
+              )}
+
+              {/* Évaluations placeholder */}
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <Star size={16} className="text-amber-500" />
+                <span className="text-sm font-600 text-amber-700">Évaluations à venir</span>
+              </div>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button onClick={() => setViewingPro(null)} className="btn-secondary w-full py-2.5">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Toast toasts={toasts} />
