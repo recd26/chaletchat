@@ -178,6 +178,12 @@ export function useRequests() {
       const completedBefore = req.checklist_completions?.filter(c => c.is_done && c.photo_url)?.length || 0
       // +1 pour la pièce qu'on vient de compléter
       if (totalTasks > 0 && (completedBefore + 1) >= totalTasks) {
+        // Marquer la demande comme complétée (filet de sécurité si le trigger DB ne se déclenche pas)
+        await supabase.from('cleaning_requests')
+          .update({ status: 'completed', updated_at: new Date().toISOString() })
+          .eq('id', requestId)
+          .in('status', ['confirmed', 'in_progress'])
+
         notifyCleaningCompleted({
           request: req,
           chaletName: req.chalet?.name,

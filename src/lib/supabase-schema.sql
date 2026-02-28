@@ -207,7 +207,7 @@ begin
   if total_tasks > 0 and done_tasks >= total_tasks then
     update cleaning_requests
     set status = 'completed', updated_at = now()
-    where id = req_id and status = 'in_progress';
+    where id = req_id and status in ('confirmed', 'in_progress');
     -- NOTE : appelez votre edge function Stripe depuis ici ou via webhook
     -- perform net.http_post('https://VOTRE_PROJET.supabase.co/functions/v1/release-payment', ...);
   end if;
@@ -264,6 +264,9 @@ create policy "Pro sees open requests" on public.cleaning_requests
     status = 'open'
     or assigned_pro_id = auth.uid()
   );
+create policy "Assigned pro can update request" on public.cleaning_requests
+  for update using (assigned_pro_id = auth.uid())
+  with check (assigned_pro_id = auth.uid());
 
 -- Offres
 create policy "Pro manages own offers" on public.offers
@@ -456,5 +459,49 @@ CREATE POLICY "Owner views checklist" ON public.checklist_completions
       WHERE cr.id = request_id AND c.owner_id = auth.uid()
     )
   );
+
+-- Migration: fix trigger pour accepter 'confirmed' et 'in_progress'
+CREATE OR REPLACE FUNCTION maybe_release_payment()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  total_tasks   int;
+  done_tasks    int;
+  req_id        uuid;
+BEGIN
+  req_id := new.request_id;
+
+  SELECT count(*) INTO total_tasks
+  FROM checklist_templates ct
+  JOIN cleaning_requests cr ON cr.chalet_id = (
+    SELECT chalet_id FROM cleaning_requests WHERE id = req_id
+  )
+  WHERE cr.id = req_id;
+
+  SELECT count(*) INTO done_tasks
+  FROM checklist_completions
+  WHERE request_id = req_id
+    AND is_done = true
+    AND photo_url IS NOT NULL;
+
+  IF total_tasks > 0 AND done_tasks >= total_tasks THEN
+    UPDATE cleaning_requests
+    SET status = 'completed', updated_at = now()
+    WHERE id = req_id AND status IN ('confirmed', 'in_progress');
+  END IF;
+
+  RETURN new;
+END;
+$$;
+
+-- Migration: permettre au pro assigné de mettre à jour la demande (status → completed)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'cleaning_requests' AND policyname = 'Assigned pro can update request'
+  ) THEN
+    CREATE POLICY "Assigned pro can update request" ON public.cleaning_requests
+      FOR UPDATE USING (assigned_pro_id = auth.uid())
+      WITH CHECK (assigned_pro_id = auth.uid());
+  END IF;
+END $$;
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
