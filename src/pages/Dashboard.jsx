@@ -5,8 +5,10 @@ import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Plus, Lock, Eye, EyeOff, MessageSquare } from 'lucide-react'
+import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard } from 'lucide-react'
 import ChatPanel from '../components/ChatPanel'
+import StripeCardForm from '../components/StripeCardForm'
+import { supabase } from '../lib/supabase'
 
 const TABS = ['Mes chalets', '🔑 Accès', '💳 Paiement']
 
@@ -18,9 +20,34 @@ export default function Dashboard() {
   const [tab, setTab] = useState(0)
   const [showCode, setShowCode] = useState({})
   const [chatRequest, setChatRequest] = useState(null)
+  const [savedCard, setSavedCard] = useState(
+    profile?.stripe_customer_id ? { last4: '4242', brand: 'Visa', name: profile.first_name } : null
+  )
+  const [showCardForm, setShowCardForm] = useState(false)
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  async function handleCardSaved({ paymentMethodId, name, last4, brand }) {
+    setSavedCard({ last4, brand, name })
+    setShowCardForm(false)
+    // Sauvegarder le mock stripe_customer_id dans le profil
+    await supabase
+      .from('profiles')
+      .update({ stripe_customer_id: paymentMethodId })
+      .eq('id', profile.id)
+    toast('💳 Carte enregistrée avec succès !', 'success')
+  }
+
+  function handleNewRequest() {
+    if (!savedCard) {
+      toast('💳 Ajoutez une méthode de paiement avant de créer une demande', 'info')
+      setTab(2)
+      return
+    }
+    // Navigate to nouvelle-demande (route to be created)
+    window.location.href = '/nouvelle-demande'
   }
 
   async function handleAccept(requestId, offerId, proId, price) {
@@ -52,9 +79,9 @@ export default function Dashboard() {
           <Link to="/nouveau-chalet" className="btn-secondary flex items-center gap-2 text-sm">
             <Plus size={15} /> Chalet
           </Link>
-          <Link to="/nouvelle-demande" className="btn-primary flex items-center gap-2 text-sm">
+          <button onClick={handleNewRequest} className="btn-primary flex items-center gap-2 text-sm">
             <Plus size={15} /> Demande
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -251,13 +278,49 @@ export default function Dashboard() {
         <div>
           <div className="card mb-4">
             <h3 className="font-700 text-gray-900 mb-4">💳 Méthode de paiement</h3>
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3 mb-4">
-              <span className="text-2xl">✅</span>
-              <div>
-                <p className="text-sm font-700 text-green-700">Carte enregistrée</p>
-                <p className="text-xs text-green-600">Visa se terminant par •••• 4242 • Paiements automatiques activés</p>
-              </div>
-            </div>
+
+            {/* Carte sauvegardee */}
+            {savedCard && !showCardForm ? (
+              <>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3 mb-4">
+                  <span className="text-2xl">✅</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-700 text-green-700">Carte enregistrée</p>
+                    <p className="text-xs text-green-600">{savedCard.brand} se terminant par •••• {savedCard.last4}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCardForm(true)}
+                  className="btn-secondary text-xs flex items-center gap-2"
+                >
+                  <CreditCard size={14} /> Changer de carte
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Formulaire carte */}
+                {!savedCard && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 mb-4">
+                    💳 Ajoutez une méthode de paiement pour pouvoir créer des demandes de ménage.
+                  </div>
+                )}
+                {showCardForm && savedCard && (
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm text-gray-400">Entrez les informations de votre nouvelle carte.</p>
+                    <button onClick={() => setShowCardForm(false)} className="text-xs text-gray-400 hover:text-gray-600">Annuler</button>
+                  </div>
+                )}
+                <StripeCardForm
+                  onSuccess={handleCardSaved}
+                  onError={(msg) => toast(msg, 'error')}
+                  buttonText={savedCard ? 'Changer la carte' : 'Ajouter la carte'}
+                />
+              </>
+            )}
+          </div>
+
+          {/* Comment ca marche */}
+          <div className="card">
             <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-2">
               <p>💸 <strong>Comment ça marche :</strong></p>
               <p>1. Vous acceptez une offre → votre carte est pré-autorisée</p>

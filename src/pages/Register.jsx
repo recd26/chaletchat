@@ -8,7 +8,7 @@ import UploadBox from '../components/UploadBox'
 import Toast from '../components/Toast'
 
 // ── Étapes selon le rôle ────────────────────────────────────
-const STEPS_PROPRIO = ['Compte', 'Profil', 'Paiement']
+const STEPS_PROPRIO = ['Compte', 'Profil']
 const STEPS_PRO     = ['Compte', 'Profil', 'Identité', 'Bancaire']
 
 export default function Register() {
@@ -36,10 +36,6 @@ export default function Register() {
   const [province,    setProvince]    = useState('')
   const [chaletCount, setChaletCount] = useState('1 chalet')
   const [locationType,setLocationType]= useState('Airbnb / Vrbo (courte durée)')
-  const [cardName,    setCardName]    = useState('')
-  const [cardNum,     setCardNum]     = useState('')
-  const [expiry,      setExpiry]      = useState('')
-  const [cvv,         setCvv]         = useState('')
 
   // Pro profil
   const [zone,        setZone]        = useState('')
@@ -63,16 +59,6 @@ export default function Register() {
   const isTeal     = role === 'pro'
   const totalSteps = steps.length
 
-  function fmtCard(v) {
-    const d = v.replace(/\D/g, '').substring(0, 16)
-    return d.match(/.{1,4}/g)?.join(' ') || d
-  }
-  function fmtExp(v) {
-    const d = v.replace(/\D/g, '').substring(0, 4)
-    if (d.length >= 3) return d.substring(0, 2) + ' / ' + d.substring(2)
-    return d
-  }
-
   function validateStep() {
     if (step === 1) {
       if (!firstName || !lastName) return toast('⚠️ Prénom et nom requis', 'error')
@@ -84,11 +70,6 @@ export default function Register() {
     }
     if (step === 2 && role === 'proprio') {
       if (!province) return toast('⚠️ Sélectionnez une province', 'error')
-      return true
-    }
-    if (step === 3 && role === 'proprio') {
-      if (!cardName)              return toast('⚠️ Nom du titulaire requis', 'error')
-      if (cardNum.replace(/\s/g,'').length < 14) return toast('⚠️ Numéro de carte invalide', 'error')
       return true
     }
     if (step === 3 && role === 'pro') {
@@ -260,24 +241,9 @@ export default function Register() {
                 <option>Location au mois</option><option>Mixte</option>
               </select></div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-              💳 <strong>Étape suivante :</strong> Vous devrez ajouter une méthode de paiement. Elle ne sera débitée qu'après complétion du ménage.
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
+              💳 Vous pourrez ajouter votre méthode de paiement plus tard dans votre tableau de bord.
             </div>
-          </div>
-        )}
-
-        {/* ──────── STEP 3 PROPRIO : Paiement ──────── */}
-        {step === 3 && role === 'proprio' && (
-          <div>
-            <h2 className="text-xl font-800 text-gray-900 mb-1">Méthode de paiement 💳</h2>
-            <p className="text-sm text-gray-400 mb-6">Obligatoire. Votre carte ne sera débitée qu'après complétion du ménage.</p>
-            <StripeCardForm
-              onSuccess={(paymentMethodId, name) => {
-                toast('💳 Carte validée par Stripe !', 'success')
-                handleSubmit()
-              }}
-              onError={(msg) => toast(msg, 'error')}
-            />
           </div>
         )}
 
@@ -370,7 +336,6 @@ export default function Register() {
         )}
 
         {/* ── Boutons de navigation ── */}
-        {!(step === 3 && role === 'proprio') && (
         <div className="flex gap-3 mt-6">
           {step > 1 && (
             <button type="button" onClick={() => setStep(s => s - 1)}
@@ -387,10 +352,6 @@ export default function Register() {
             {busy ? 'Création...' : step === totalSteps ? '✅ Créer mon compte' : 'Continuer →'}
           </button>
         </div>
-        )}
-        {step === 3 && role === 'proprio' && (
-          <button type="button" onClick={() => setStep(s => s - 1)} className="btn-secondary w-full mt-3">← Retour</button>
-        )}
 
         <p className="text-center text-sm text-gray-400 mt-5">
           Déjà un compte ?{' '}
