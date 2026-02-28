@@ -2,17 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import { haversineDistance } from '../lib/geocode'
-
-async function sendNotification({ userId, type, title, body, requestId, senderId }) {
-  await supabase.from('notifications').insert({
-    user_id: userId,
-    type,
-    title,
-    body,
-    request_id: requestId,
-    sender_id: senderId,
-  })
-}
+import { sendNotification, notifyNearbyPros, notifyCleaningCompleted } from '../lib/notifications'
 
 export function useRequests() {
   const { user, profile } = useAuth()
@@ -69,9 +59,17 @@ export function useRequests() {
     const { data, error } = await supabase
       .from('cleaning_requests')
       .insert({ ...payload, owner_id: user.id })
-      .select()
+      .select('*, chalet:chalets(*)')
       .single()
     if (error) throw error
+
+    // Notifier les pros dans le rayon
+    notifyNearbyPros({
+      request: data,
+      chalet: data.chalet,
+      senderId: user.id,
+    })
+
     await fetchRequests()
     return data
   }
@@ -168,6 +166,22 @@ export function useRequests() {
       .getPublicUrl(path)
 
     await updateChecklistItem(requestId, templateId, true, publicUrl)
+
+    // Vérifier si la checklist est 100% complétée
+    const req = requests.find(r => r.id === requestId)
+    if (req) {
+      const totalTasks = req.chalet?.checklist_templates?.length || 0
+      const completedBefore = req.checklist_completions?.filter(c => c.is_done && c.photo_url)?.length || 0
+      // +1 pour la pièce qu'on vient de compléter
+      if (totalTasks > 0 && (completedBefore + 1) >= totalTasks) {
+        notifyCleaningCompleted({
+          request: req,
+          chaletName: req.chalet?.name,
+          proName: profile?.first_name,
+        })
+      }
+    }
+
     return publicUrl
   }
 

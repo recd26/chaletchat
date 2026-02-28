@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Check, MessageSquare, DollarSign, CheckCircle, XCircle } from 'lucide-react'
+import { Bell, Check, MessageSquare, DollarSign, CheckCircle, XCircle, MapPin, Sparkles } from 'lucide-react'
 import { useNotifications } from '../hooks/useNotifications'
 import { useToast } from '../hooks/useToast'
 import Toast from './Toast'
 
 const ICON_MAP = {
-  new_offer:      { icon: DollarSign,   color: 'text-coral' },
-  offer_accepted: { icon: CheckCircle,  color: 'text-teal' },
-  offer_declined: { icon: XCircle,      color: 'text-gray-400' },
-  new_message:    { icon: MessageSquare, color: 'text-blue-500' },
+  new_offer:           { icon: DollarSign,   color: 'text-coral' },
+  offer_accepted:      { icon: CheckCircle,  color: 'text-teal' },
+  offer_declined:      { icon: XCircle,      color: 'text-gray-400' },
+  new_message:         { icon: MessageSquare, color: 'text-blue-500' },
+  new_request_nearby:  { icon: MapPin,       color: 'text-teal' },
+  cleaning_completed:  { icon: Sparkles,     color: 'text-green-500' },
 }
 
 export default function NotificationBell() {

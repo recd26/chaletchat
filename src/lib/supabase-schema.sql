@@ -318,7 +318,7 @@ create policy "Authenticated users create notifications" on public.notifications
 create table public.notifications (
   id          uuid default uuid_generate_v4() primary key,
   user_id     uuid references public.profiles(id) on delete cascade not null,
-  type        text not null check (type in ('new_offer','offer_accepted','offer_declined','new_message')),
+  type        text not null check (type in ('new_offer','offer_accepted','offer_declined','new_message','new_request_nearby','cleaning_completed')),
   title       text not null,
   body        text,
   request_id  uuid references public.cleaning_requests(id) on delete cascade,
@@ -353,5 +353,12 @@ ALTER TABLE public.cleaning_requests
   ADD COLUMN IF NOT EXISTS supplies_on_site jsonb default '[]',
   ADD COLUMN IF NOT EXISTS laundry_tasks    jsonb default '[]',
   ADD COLUMN IF NOT EXISTS spa_tasks        jsonb default '[]';
+
+-- Migration: ajouter types de notification
+ALTER TABLE public.notifications
+  DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE public.notifications
+  ADD CONSTRAINT notifications_type_check
+  CHECK (type IN ('new_offer','offer_accepted','offer_declined','new_message','new_request_nearby','cleaning_completed'));
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
