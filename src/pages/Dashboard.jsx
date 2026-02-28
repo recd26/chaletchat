@@ -5,7 +5,7 @@ import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages } from 'lucide-react'
+import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages, CheckCircle, Camera } from 'lucide-react'
 import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
@@ -26,6 +26,7 @@ export default function Dashboard() {
   )
   const [showCardForm, setShowCardForm] = useState(false)
   const [viewingPro, setViewingPro] = useState(null) // profil pro à afficher
+  const [openRequest, setOpenRequest] = useState(null) // id de la demande ouverte
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
@@ -112,11 +113,15 @@ export default function Dashboard() {
             </div>
           ) : (
             chalets.map(chalet => {
-              const req = myRequests.find(r => r.chalet_id === chalet.id && r.status !== 'completed')
+              const chaletReqs = myRequests.filter(r => r.chalet_id === chalet.id)
+              const req = chaletReqs.find(r => r.status !== 'completed') || chaletReqs[0]
               const offers = req?.offers || []
-              const done = req?.checklist_completions?.filter(c => c.is_done && c.photo_url)?.length || 0
-              const total = chalet.checklist_templates?.length || 0
+              const tasks = req?.chalet?.checklist_templates || chalet.checklist_templates || []
+              const completions = req?.checklist_completions || []
+              const done = completions.filter(c => c.is_done && c.photo_url).length
+              const total = tasks.length
               const pct = total > 0 ? Math.round(done / total * 100) : 0
+              const isOpen = openRequest === req?.id
 
               return (
                 <div key={chalet.id} className="card mb-4">
@@ -147,25 +152,7 @@ export default function Dashboard() {
                         <span>🗓 {new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
                         <span>⏰ {req.scheduled_time}</span>
                         {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
-                      </div>
-
-                      {/* Résumé produits / lavage / spa */}
-                      <div className="flex flex-wrap gap-2 mb-4 text-xs">
-                        {req.supplies_on_site?.length > 0 && (
-                          <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
-                            🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits dispo
-                          </span>
-                        )}
-                        {req.laundry_tasks?.length > 0 && (
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
-                            🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
-                          </span>
-                        )}
-                        {req.spa_tasks?.length > 0 && (
-                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
-                            ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
-                          </span>
-                        )}
+                        {req.agreed_price && <span className="text-teal font-700">💰 {req.agreed_price} $</span>}
                       </div>
 
                       {/* Checklist progress */}
@@ -175,13 +162,13 @@ export default function Dashboard() {
                             <span className="text-gray-400">{done} / {total} pièces avec photos</span>
                             <span className="text-teal font-700">{pct}%</span>
                           </div>
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-teal to-teal-light rounded-full transition-all duration-500"
                               style={{ width: `${pct}%` }} />
                           </div>
                           {pct === 100 && (
-                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mt-3 text-xs text-green-700">
-                              ⚡ <strong>Checklist 100% !</strong> {req.agreed_price}$ libérés automatiquement.
+                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mt-3 text-xs text-green-700 font-600">
+                              🎉 <strong>Checklist 100% !</strong> {req.agreed_price}$ libérés automatiquement.
                             </div>
                           )}
                         </div>
@@ -197,14 +184,192 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-lg text-white">🧹</div>
                                 <div>
                                   <p className="text-sm font-700 text-gray-800">{accepted.pro?.first_name} {accepted.pro?.last_name}</p>
-                                  <p className="text-xs text-green-600 font-600">Offre acceptée</p>
+                                  <p className="text-xs text-green-600 font-600">Offre acceptée — {accepted.price} $</p>
                                 </div>
                               </div>
-                              <p className="text-lg font-800 text-teal">{accepted.price} $</p>
+                              <button
+                                onClick={() => setViewingPro(accepted.pro)}
+                                className="text-xs font-600 bg-white text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all">
+                                Profil
+                              </button>
                             </div>
                           </div>
                         ) : null
                       })()}
+
+                      {/* Bouton ouvrir / fermer la demande */}
+                      {req.status === 'confirmed' && total > 0 && (
+                        <button
+                          onClick={() => setOpenRequest(isOpen ? null : req.id)}
+                          className="btn-primary w-full py-3 text-sm font-700 mb-3"
+                        >
+                          {isOpen ? '▲ Fermer la demande' : `▼ Voir la checklist & photos en direct`}
+                        </button>
+                      )}
+
+                      {/* Vue détaillée (quand ouvert) */}
+                      {isOpen && (
+                        <div className="mt-2 pt-4 border-t border-gray-200">
+                          {/* Résumé produits / lavage / spa */}
+                          <div className="flex flex-wrap gap-2 mb-4 text-xs">
+                            {req.supplies_on_site?.length > 0 && (
+                              <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
+                                🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits dispo
+                              </span>
+                            )}
+                            {req.laundry_tasks?.length > 0 && (
+                              <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
+                                🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {req.spa_tasks?.length > 0 && (
+                              <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
+                                ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Produits détaillés */}
+                          {req.supplies_on_site?.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {req.supplies_on_site.map((s, i) => (
+                                  <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
+                                    s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'
+                                  }`}>{s.available ? '✓' : '✗'} {s.name}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Lavage détaillé */}
+                          {req.laundry_tasks?.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {req.laundry_tasks.map((l, i) => (
+                                  <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Spa détaillé */}
+                          {req.spa_tasks?.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {req.spa_tasks.map((s, i) => (
+                                  <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {req.special_notes && (
+                            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
+                              📝 {req.special_notes}
+                            </div>
+                          )}
+
+                          {/* Checklist avec photos — vue proprio */}
+                          <div className="bg-coral/5 border border-coral/20 rounded-xl p-4 mb-4">
+                            <div className="flex items-center justify-between mb-4">
+                              <p className="text-sm font-700 text-gray-800">📸 Checklist du ménage — Suivi en direct</p>
+                              <span className="text-xs font-700 text-teal bg-teal/10 px-2.5 py-1 rounded-lg">
+                                {done}/{total} complétées
+                              </span>
+                            </div>
+
+                            <div className="space-y-3">
+                              {tasks.map((template, idx) => {
+                                const comp = completions.find(c => c.template_id === template.id)
+                                const isDone = comp?.is_done && comp?.photo_url
+
+                                return (
+                                  <div key={template.id}
+                                    className={`rounded-xl border-2 overflow-hidden transition-all ${
+                                      isDone ? 'border-teal bg-white' : 'border-gray-200 bg-white'
+                                    }`}>
+
+                                    {/* En-tête de la pièce */}
+                                    <div className={`flex items-center gap-3 px-4 py-3 ${isDone ? 'bg-green-50' : ''}`}>
+                                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-800 flex-shrink-0 ${
+                                        isDone ? 'bg-teal border-teal text-white' : 'bg-gray-100 border-gray-300 text-gray-400'
+                                      }`}>
+                                        {isDone ? '✓' : idx + 1}
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className={`text-sm font-700 ${isDone ? 'text-teal' : 'text-gray-800'}`}>
+                                          {template.room_name}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                          {isDone ? 'Complétée avec photo' : 'En attente de la photo du pro'}
+                                        </p>
+                                      </div>
+                                      {isDone && <CheckCircle size={20} className="text-teal flex-shrink-0" />}
+                                    </div>
+
+                                    {/* Photo si complétée */}
+                                    {isDone && (
+                                      <div className="px-4 pb-3">
+                                        <div className="flex items-center gap-3 bg-green-50 rounded-xl p-3">
+                                          <img
+                                            src={comp.photo_url}
+                                            alt={template.room_name}
+                                            className="w-20 h-20 rounded-lg object-cover border-2 border-teal/30 cursor-pointer hover:opacity-90 transition-all"
+                                            onClick={() => window.open(comp.photo_url, '_blank')}
+                                          />
+                                          <div className="flex-1">
+                                            <p className="text-xs font-600 text-green-700">📸 Photo validée</p>
+                                            <p className="text-xs text-green-600">
+                                              {comp.completed_at ? new Date(comp.completed_at).toLocaleString('fr-CA', {
+                                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                                              }) : ''}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Indicateur en attente */}
+                                    {!isDone && (
+                                      <div className="px-4 pb-3">
+                                        <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3 text-xs text-gray-400">
+                                          <Camera size={14} />
+                                          <span>En attente de la photo du professionnel...</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Résumé badges (visible quand fermé) */}
+                      {!isOpen && (
+                        <div className="flex flex-wrap gap-2 mb-3 text-xs">
+                          {req.supplies_on_site?.length > 0 && (
+                            <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
+                              🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits
+                            </span>
+                          )}
+                          {req.laundry_tasks?.length > 0 && (
+                            <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
+                              🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {req.spa_tasks?.length > 0 && (
+                            <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
+                              ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Offres en attente (seulement si demande ouverte) */}
                       {req.status === 'open' && offers.filter(o => o.status === 'pending').length > 0 && (
