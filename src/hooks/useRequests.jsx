@@ -35,7 +35,8 @@ export function useRequests() {
           *,
           chalet:chalets(*, checklist_templates(*)),
           offers(*,pro:profiles(*)),
-          checklist_completions(*)
+          checklist_completions(*),
+          reviews(*)
         `)
         .order('scheduled_date', { ascending: true })
 
@@ -188,6 +189,21 @@ export function useRequests() {
     return publicUrl
   }
 
+  async function submitReview(requestId, revieweeId, rating, comment) {
+    const { error } = await supabase.from('reviews').upsert(
+      {
+        request_id: requestId,
+        reviewer_id: user.id,
+        reviewee_id: revieweeId,
+        rating,
+        comment,
+      },
+      { onConflict: 'request_id,reviewer_id' }
+    )
+    if (error) throw error
+    await fetchRequests()
+  }
+
   function getOpenRequestsNearby(proProfile) {
     const openReqs = requests.filter(r => r.status === 'open')
     if (!proProfile || proProfile.role !== 'pro' || !proProfile.lat || !proProfile.lng) return openReqs
@@ -202,5 +218,5 @@ export function useRequests() {
     })
   }
 
-  return { requests, loading, createRequest, acceptOffer, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, refetch: fetchRequests }
+  return { requests, loading, createRequest, acceptOffer, submitOffer, submitReview, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, refetch: fetchRequests }
 }

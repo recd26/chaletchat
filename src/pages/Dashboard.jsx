@@ -10,12 +10,12 @@ import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
-const TABS = ['Mes chalets', '🔑 Accès', '💳 Paiement']
+const TABS = ['Mes chalets', '✅ Historique', '🔑 Accès', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
   const { chalets, loading: loadChalets } = useChalets()
-  const { requests, loading: loadReqs, acceptOffer } = useRequests()
+  const { requests, loading: loadReqs, acceptOffer, submitReview } = useRequests()
   const { toasts, toast } = useToast()
   const navigate = useNavigate()
   const [tab, setTab] = useState(0)
@@ -27,6 +27,10 @@ export default function Dashboard() {
   const [showCardForm, setShowCardForm] = useState(false)
   const [viewingPro, setViewingPro] = useState(null) // profil pro à afficher
   const [openRequest, setOpenRequest] = useState(null) // id de la demande ouverte
+  const [openCompleted, setOpenCompleted] = useState(null) // id de la mission complétée ouverte
+  const [reviewData, setReviewData] = useState({}) // { [requestId]: { rating, comment } }
+  const [reviewHover, setReviewHover] = useState({}) // { [requestId]: hoverStar }
+  const [submittingReview, setSubmittingReview] = useState(null)
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
@@ -64,6 +68,22 @@ export default function Dashboard() {
   const myRequests = requests.filter(r =>
     chalets.some(c => c.id === r.chalet_id)
   )
+  const completedRequests = myRequests.filter(r => r.status === 'completed')
+  const totalSpent = completedRequests.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0)
+
+  async function handleReview(requestId, proId) {
+    const data = reviewData[requestId]
+    if (!data?.rating) return toast('⚠️ Sélectionnez une note', 'error')
+    setSubmittingReview(requestId)
+    try {
+      await submitReview(requestId, proId, data.rating, data.comment || '')
+      toast('⭐ Évaluation envoyée ! Merci !', 'success')
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setSubmittingReview(null)
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-9">
@@ -422,8 +442,209 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 1 : Accès ── */}
+      {/* ── Onglet 1 : Historique ── */}
       {tab === 1 && (
+        <div>
+          {/* Stats résumé */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-teal">{completedRequests.length}</p>
+              <p className="text-xs text-gray-400 mt-1">Missions complétées</p>
+            </div>
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-gray-900">{totalSpent.toFixed(0)} $</p>
+              <p className="text-xs text-gray-400 mt-1">Total dépensé</p>
+            </div>
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-amber-500">
+                {completedRequests.length > 0
+                  ? (completedRequests.filter(r => r.reviews?.length > 0).reduce((s, r) => s + (r.reviews[0]?.rating || 0), 0) / Math.max(completedRequests.filter(r => r.reviews?.length > 0).length, 1)).toFixed(1)
+                  : '—'
+                } ★
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Note moyenne donnée</p>
+            </div>
+          </div>
+
+          {completedRequests.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="font-700 text-gray-600">Aucune mission complétée</p>
+              <p className="text-sm text-gray-400 mt-1">Vos missions terminées apparaîtront ici.</p>
+            </div>
+          ) : (
+            completedRequests.map(req => {
+              const chalet = chalets.find(c => c.id === req.chalet_id)
+              const tasks = req.chalet?.checklist_templates || chalet?.checklist_templates || []
+              const completions = req.checklist_completions || []
+              const accepted = req.offers?.find(o => o.status === 'accepted')
+              const isExpanded = openCompleted === req.id
+              const myReview = req.reviews?.find(r => r.reviewer_id === profile?.id)
+              const rd = reviewData[req.id] || {}
+              const rh = reviewHover[req.id] || 0
+
+              return (
+                <div key={req.id} className="card mb-4 border-green-200 border">
+                  {/* En-tête */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="pill-done mb-2 inline-block">✅ Complété</span>
+                      <h3 className="font-700 text-gray-900">🏔 {chalet?.name || 'Chalet'}</h3>
+                      <p className="text-xs text-gray-400">
+                        {chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'long', year:'numeric' }) : ''}
+                      </p>
+                    </div>
+                    <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
+                  </div>
+
+                  {/* Pro qui a fait la mission */}
+                  {accepted && (
+                    <div className="flex items-center gap-3 bg-green-50 rounded-xl px-4 py-2.5 mb-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-sm text-white">🧹</div>
+                      <div className="flex-1">
+                        <p className="text-sm font-700 text-gray-800">{accepted.pro?.first_name} {accepted.pro?.last_name}</p>
+                        <p className="text-xs text-green-600">Mission complétée</p>
+                      </div>
+                      <button onClick={() => setViewingPro(accepted.pro)}
+                        className="text-xs font-600 text-gray-400 hover:text-teal">Profil</button>
+                    </div>
+                  )}
+
+                  {/* Bouton voir photos */}
+                  <button
+                    onClick={() => setOpenCompleted(isExpanded ? null : req.id)}
+                    className="w-full py-2.5 text-sm font-700 text-teal bg-teal/5 border border-teal/20 rounded-xl hover:bg-teal/10 transition-all mb-3"
+                  >
+                    {isExpanded ? '▲ Fermer' : `📸 Voir les ${tasks.length} photos — Checklist complète`}
+                  </button>
+
+                  {/* Galerie photos (expanded) */}
+                  {isExpanded && (
+                    <div className="mb-4">
+                      {/* Grille photos */}
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {tasks.map((template) => {
+                          const comp = completions.find(c => c.template_id === template.id)
+                          return (
+                            <div key={template.id} className="relative group">
+                              {comp?.photo_url ? (
+                                <img
+                                  src={comp.photo_url}
+                                  alt={template.room_name}
+                                  className="w-full h-32 object-cover rounded-xl border-2 border-teal/20 cursor-pointer hover:opacity-90 transition-all"
+                                  onClick={() => window.open(comp.photo_url, '_blank')}
+                                />
+                              ) : (
+                                <div className="w-full h-32 rounded-xl bg-gray-100 border-2 border-gray-200 flex items-center justify-center text-gray-300">
+                                  <Camera size={24} />
+                                </div>
+                              )}
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs font-600 px-2 py-1.5 rounded-b-xl">
+                                ✓ {template.room_name}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Détails produits / lavage / spa */}
+                      {req.supplies_on_site?.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs font-700 text-gray-400 mb-1">🧴 Produits :</p>
+                          <div className="flex flex-wrap gap-1">
+                            {req.supplies_on_site.map((s, i) => (
+                              <span key={i} className={`text-xs px-2 py-0.5 rounded-lg ${s.available ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-400'}`}>{s.name}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {req.laundry_tasks?.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs font-700 text-gray-400 mb-1">🧺 Lavage :</p>
+                          <div className="flex flex-wrap gap-1">
+                            {req.laundry_tasks.map((l, i) => (
+                              <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">{l.name}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {req.spa_tasks?.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs font-700 text-gray-400 mb-1">♨️ Spa :</p>
+                          <div className="flex flex-wrap gap-1">
+                            {req.spa_tasks.map((s, i) => (
+                              <span key={i} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg">{s.name}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Évaluation */}
+                  {myReview ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-700 text-amber-700">Votre évaluation</p>
+                        <div className="flex gap-0.5">
+                          {Array.from({length: 5}).map((_, j) => (
+                            <Star key={j} size={14} className={j < myReview.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                          ))}
+                        </div>
+                      </div>
+                      {myReview.comment && <p className="text-xs text-amber-600">{myReview.comment}</p>}
+                    </div>
+                  ) : accepted ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      <p className="text-xs font-700 text-gray-700 mb-2">⭐ Évaluer {accepted.pro?.first_name}</p>
+                      <div className="flex gap-1 mb-3">
+                        {Array.from({length: 5}).map((_, j) => (
+                          <button key={j}
+                            onMouseEnter={() => setReviewHover(h => ({ ...h, [req.id]: j + 1 }))}
+                            onMouseLeave={() => setReviewHover(h => ({ ...h, [req.id]: 0 }))}
+                            onClick={() => setReviewData(d => ({ ...d, [req.id]: { ...d[req.id], rating: j + 1 } }))}
+                          >
+                            <Star size={22} className={
+                              j < (rh || rd.rating || 0)
+                                ? 'fill-amber-400 text-amber-400 transition-all'
+                                : 'text-gray-300 transition-all hover:text-amber-300'
+                            } />
+                          </button>
+                        ))}
+                        {rd.rating && <span className="text-sm font-700 text-amber-600 ml-2">{rd.rating}/5</span>}
+                      </div>
+                      <textarea
+                        className="input-field text-xs min-h-16 resize-none mb-2"
+                        placeholder="Un commentaire ? (optionnel)"
+                        value={rd.comment || ''}
+                        onChange={e => setReviewData(d => ({ ...d, [req.id]: { ...d[req.id], comment: e.target.value } }))}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleReview(req.id, accepted.pro_id)}
+                          disabled={submittingReview === req.id}
+                          className="btn-primary text-xs py-2 disabled:opacity-60"
+                        >
+                          {submittingReview === req.id ? '⏳...' : '⭐ Envoyer l\'évaluation'}
+                        </button>
+                        <button
+                          onClick={() => navigate('/nouvelle-demande')}
+                          className="btn-secondary text-xs py-2"
+                        >
+                          🔄 Redemander ce pro
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet 2 : Accès ── */}
+      {tab === 2 && (
         <div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm text-blue-700">
             🔒 <strong>Envoi automatique et sécurisé</strong> — Les détails d'accès sont transmis uniquement au professionnel accepté, dès l'acceptation de son offre.
@@ -481,8 +702,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 2 : Paiement ── */}
-      {tab === 2 && (
+      {/* ── Onglet 3 : Paiement ── */}
+      {tab === 3 && (
         <div>
           <div className="card mb-4">
             <h3 className="font-700 text-gray-900 mb-4">💳 Méthode de paiement</h3>

@@ -10,7 +10,7 @@ import { geocodeAddress } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
-const TABS = ['Demandes à proximité', 'Mon profil & vérification', 'Mes évaluations']
+const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées']
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
@@ -40,6 +40,15 @@ export default function ProDashboard() {
   const myActive = requests.filter(r =>
     r.assigned_pro_id === profile?.id && ['confirmed','in_progress'].includes(r.status)
   )
+  // Mes missions complétées
+  const myCompleted = requests.filter(r =>
+    r.assigned_pro_id === profile?.id && r.status === 'completed'
+  )
+  const totalEarned = myCompleted.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0)
+  const myReviews = myCompleted.flatMap(r => r.reviews || []).filter(r => r.reviewee_id === profile?.id)
+  const avgRating = myReviews.length > 0
+    ? (myReviews.reduce((s, r) => s + r.rating, 0) / myReviews.length).toFixed(1)
+    : null
 
   async function handleOffer(requestId) {
     const price = parseFloat(offerPrice[requestId])
@@ -663,40 +672,143 @@ export default function ProDashboard() {
         </div>
       )}
 
-      {/* ── Onglet 2 : Évaluations ── */}
+      {/* ── Onglet 2 : Missions complétées ── */}
       {tab === 2 && (
         <div>
-          <div className="card mb-4">
-            <div className="flex items-center gap-4 mb-5">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-2xl">🧹</div>
-              <div>
-                <p className="text-xl font-800 text-gray-900">4.9 ★</p>
-                <p className="text-sm text-gray-400">Basé sur 127 évaluations</p>
-              </div>
+          {/* Stats résumé */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-teal">{myCompleted.length}</p>
+              <p className="text-xs text-gray-400 mt-1">Missions</p>
             </div>
-
-            {/* Exemple d'évaluations */}
-            {[
-              { owner:'Jean-François M.', rating:5, comment:'Impeccable ! Toutes les photos envoyées, très minutieuse.', date:'22 fév 2026', chalet:'Chalet des Laurentides' },
-              { owner:'Sylvie B.', rating:5, comment:'Ponctuelle et très professionnelle. Je recommande!', date:'15 fév 2026', chalet:'Chalet Boreal' },
-              { owner:'Marc T.', rating:4, comment:'Excellent travail, quelques détails mineurs mais très satisfait.', date:'8 fév 2026', chalet:'Chalet du Lac' },
-            ].map((rev, i) => (
-              <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-3">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <p className="text-sm font-700 text-gray-800">{rev.owner}</p>
-                    <p className="text-xs text-gray-400">{rev.chalet} • {rev.date}</p>
-                  </div>
-                  <div className="flex gap-0.5">
-                    {Array.from({length:5}).map((_,j) => (
-                      <Star key={j} size={14} className={j < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
-                    ))}
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600 leading-relaxed">{rev.comment}</p>
-              </div>
-            ))}
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-green-600">{totalEarned.toFixed(0)} $</p>
+              <p className="text-xs text-gray-400 mt-1">Total gagné</p>
+            </div>
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-amber-500">{avgRating || '—'} ★</p>
+              <p className="text-xs text-gray-400 mt-1">{myReviews.length} évaluation{myReviews.length > 1 ? 's' : ''}</p>
+            </div>
           </div>
+
+          {/* Évaluations reçues */}
+          {myReviews.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">⭐ Évaluations reçues</h3>
+              {myReviews.map((rev, i) => {
+                const req = myCompleted.find(r => r.id === rev.request_id)
+                return (
+                  <div key={i} className="card mb-3 border-amber-200 border">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="text-sm font-700 text-gray-800">🏔 {req?.chalet?.name || 'Chalet'}</p>
+                        <p className="text-xs text-gray-400">
+                          {req?.chalet?.city} • {req?.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day:'numeric', month:'short', year:'numeric' }) : ''}
+                        </p>
+                      </div>
+                      <div className="flex gap-0.5">
+                        {Array.from({length: 5}).map((_, j) => (
+                          <Star key={j} size={14} className={j < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                        ))}
+                      </div>
+                    </div>
+                    {rev.comment && (
+                      <p className="text-sm text-gray-600 leading-relaxed bg-amber-50 rounded-lg px-3 py-2">"{rev.comment}"</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Liste missions complétées */}
+          <h3 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">📋 Historique des missions</h3>
+
+          {myCompleted.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="font-700 text-gray-600">Aucune mission complétée</p>
+              <p className="text-sm text-gray-400 mt-1">Vos missions terminées apparaîtront ici avec vos gains.</p>
+            </div>
+          ) : (
+            myCompleted.map(req => {
+              const tasks = req.chalet?.checklist_templates || []
+              const completions = req.checklist_completions || []
+              const review = req.reviews?.find(r => r.reviewee_id === profile?.id)
+              const isExpanded = openMission === `done-${req.id}`
+
+              return (
+                <div key={req.id} className="card mb-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="font-700 text-gray-900 text-sm">🏔 {req.chalet?.name}</h4>
+                      <p className="text-xs text-gray-400">
+                        {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-800 text-green-600">{req.agreed_price} $</p>
+                      {review && (
+                        <div className="flex gap-0.5 justify-end mt-0.5">
+                          {Array.from({length: 5}).map((_, j) => (
+                            <Star key={j} size={10} className={j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Recap rapide */}
+                  <div className="flex flex-wrap gap-2 text-xs mb-2">
+                    <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-lg">✓ {tasks.length} pièces</span>
+                    {req.supplies_on_site?.length > 0 && (
+                      <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-lg">🧴 {req.supplies_on_site.length} produits</span>
+                    )}
+                    {req.laundry_tasks?.length > 0 && (
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-lg">🧺 {req.laundry_tasks.length} lavage</span>
+                    )}
+                    {req.spa_tasks?.length > 0 && (
+                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-lg">♨️ Spa</span>
+                    )}
+                  </div>
+
+                  {/* Bouton voir les photos */}
+                  <button
+                    onClick={() => setOpenMission(isExpanded ? null : `done-${req.id}`)}
+                    className="w-full py-2 text-xs font-600 text-teal bg-teal/5 border border-teal/20 rounded-lg hover:bg-teal/10 transition-all"
+                  >
+                    {isExpanded ? '▲ Fermer' : '📸 Voir mes photos'}
+                  </button>
+
+                  {/* Photos galerie */}
+                  {isExpanded && (
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      {tasks.map(template => {
+                        const comp = completions.find(c => c.template_id === template.id)
+                        return (
+                          <div key={template.id} className="relative">
+                            {comp?.photo_url ? (
+                              <img
+                                src={comp.photo_url}
+                                alt={template.room_name}
+                                className="w-full h-24 object-cover rounded-lg border border-teal/20 cursor-pointer hover:opacity-90"
+                                onClick={() => window.open(comp.photo_url, '_blank')}
+                              />
+                            ) : (
+                              <div className="w-full h-24 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300">
+                                <Camera size={18} />
+                              </div>
+                            )}
+                            <p className="text-[10px] text-gray-500 text-center mt-0.5 truncate">{template.room_name}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       )}
 
