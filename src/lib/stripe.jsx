@@ -1,10 +1,7 @@
-import { loadStripe } from '@stripe/stripe-js'
-
-const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
-
-if (!key) {
-  console.warn('⚠️  Clé Stripe manquante. Ajoutez VITE_STRIPE_PUBLISHABLE_KEY dans votre .env.')
-}
-
-// Singleton Stripe promise — ne jamais créer à l'intérieur d'un composant
-export const stripePromise = loadStripe(key || 'pk_test_placeholder')
+// Stripe integration - à activer quand prêt
+// TODO: npm install @stripe/stripe-js @stripe/react-stripe-js
+// Puis décommenter et utiliser dans StripeCardForm.jsx
+//
+// import { loadStripe } from '@stripe/stripe-js'
+// const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+// export const stripePromise = loadStripe(key)

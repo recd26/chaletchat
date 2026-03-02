@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import { haversineDistance } from '../lib/geocode'
@@ -8,20 +8,29 @@ export function useRequests() {
   const { user, profile } = useAuth()
   const [requests, setRequests] = useState([])
   const [loading,  setLoading]  = useState(true)
+  const channelRef = useRef(null)
 
   useEffect(() => {
     if (!user || !profile) return
     fetchRequests()
 
-    // Realtime updates
+    // Unique channel name per hook instance to avoid conflicts
+    const channelName = `requests-changes-${user.id}-${Date.now()}`
     const channel = supabase
-      .channel('requests-changes')
+      .channel(channelName)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'cleaning_requests',
       }, () => fetchRequests())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'offers',
+      }, () => fetchRequests())
       .subscribe()
+
+    channelRef.current = channel
 
     return () => supabase.removeChannel(channel)
   }, [user, profile])
@@ -76,12 +85,17 @@ export function useRequests() {
   }
 
   async function acceptOffer(requestId, offerId, proId, price) {
-    // 1. Accepte l'offre
-    await supabase.from('offers').update({ status: 'accepted' }).eq('id', offerId)
-    // 2. Refuse les autres offres
-    await supabase.from('offers').update({ status: 'declined' })
-      .eq('request_id', requestId).neq('id', offerId)
-    // 3. Met a jour la demande
+    // NOTE: RLS empêche le proprio de modifier les offres (seul le pro peut).
+    // On ne tente plus de mettre à jour offers.status côté client.
+    // Le statut d'acceptation est déduit de cleaning_requests.assigned_pro_id + status='confirmed'.
+    // Pour corriger, exécuter dans Supabase SQL Editor :
+    //   CREATE POLICY "Owner can update offer status" ON public.offers
+    //     FOR UPDATE USING (EXISTS (
+    //       SELECT 1 FROM cleaning_requests cr
+    //       WHERE cr.id = request_id AND cr.owner_id = auth.uid()
+    //     ));
+
+    // 1. Met a jour la demande (le proprio PEUT modifier ses propres demandes)
     const { error } = await supabase.from('cleaning_requests').update({
       assigned_pro_id: proId,
       agreed_price: price,
@@ -195,6 +209,25 @@ export function useRequests() {
     return publicUrl
   }
 
+  async function completeRequest(requestId) {
+    const req = requests.find(r => r.id === requestId)
+    const { error } = await supabase.from('cleaning_requests')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .in('status', ['confirmed', 'in_progress'])
+    if (error) throw error
+
+    if (req) {
+      notifyCleaningCompleted({
+        request: req,
+        chaletName: req.chalet?.name,
+        proName: profile?.first_name,
+      })
+    }
+
+    await fetchRequests()
+  }
+
   async function submitReview(requestId, revieweeId, rating, comment) {
     const { error } = await supabase.from('reviews').upsert(
       {
@@ -206,6 +239,22 @@ export function useRequests() {
       },
       { onConflict: 'request_id,reviewer_id' }
     )
+    if (error) throw error
+    await fetchRequests()
+  }
+
+  async function updateOffer(offerId, price, message) {
+    const { error } = await supabase.from('offers')
+      .update({ price, message })
+      .eq('id', offerId)
+    if (error) throw error
+    await fetchRequests()
+  }
+
+  async function updateRequest(requestId, updates) {
+    const { error } = await supabase.from('cleaning_requests')
+      .update(updates)
+      .eq('id', requestId)
     if (error) throw error
     await fetchRequests()
   }
@@ -224,5 +273,5 @@ export function useRequests() {
     })
   }
 
-  return { requests, loading, createRequest, acceptOffer, submitOffer, submitReview, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, refetch: fetchRequests }
+  return { requests, loading, createRequest, acceptOffer, submitOffer, submitReview, completeRequest, updateChecklistItem, uploadRoomPhoto, updateOffer, updateRequest, getOpenRequestsNearby, refetch: fetchRequests }
 }

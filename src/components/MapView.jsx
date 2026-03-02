@@ -53,7 +53,7 @@ const proIcon = new L.DivIcon({
   className: '',
 })
 
-export default function MapView({ requests = [], proLat = null, proLng = null, radius = 25 }) {
+export default function MapView({ requests = [], proLat = null, proLng = null, radius = 25, onRequestClick = null }) {
   const [center, setCenter] = useState([46.8, -71.2]) // Québec par défaut
 
   useEffect(() => {
@@ -131,17 +131,19 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
                     ~{req.estimated_price} $
                   </p>
                 )}
-                <div style={{
-                  marginTop: '8px',
-                  padding: '6px 12px',
-                  background: '#0D9488',
-                  color: 'white',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  textAlign: 'center',
-                  cursor: 'pointer'
-                }}>
+                <div
+                  onClick={() => onRequestClick && onRequestClick(req.id)}
+                  style={{
+                    marginTop: '8px',
+                    padding: '6px 12px',
+                    background: '#0D9488',
+                    color: 'white',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    textAlign: 'center',
+                    cursor: 'pointer'
+                  }}>
                   Voir la demande ↓
                 </div>
               </div>

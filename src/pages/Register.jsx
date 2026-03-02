@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
+import { supabase } from '../lib/supabase'
 import StepIndicator from '../components/StepIndicator'
 import PasswordInput from '../components/PasswordInput'
 import UploadBox from '../components/UploadBox'
@@ -117,6 +118,29 @@ export default function Register() {
         if (coords) { proLat = coords.lat; proLng = coords.lng }
       }
 
+      // Upload selfie + ID si fournis (pro step 3)
+      let selfieUrl = null, idCardUrl = null
+      if (role === 'pro') {
+        if (selfieFile) {
+          const ext = selfieFile.name.split('.').pop()
+          const path = `temp/${Date.now()}-selfie.${ext}`
+          const { error: upErr } = await supabase.storage.from('id-documents').upload(path, selfieFile, { upsert: true })
+          if (!upErr) {
+            const { data: { publicUrl } } = supabase.storage.from('id-documents').getPublicUrl(path)
+            selfieUrl = publicUrl
+          }
+        }
+        if (idFile) {
+          const ext = idFile.name.split('.').pop()
+          const path = `temp/${Date.now()}-id.${ext}`
+          const { error: upErr } = await supabase.storage.from('id-documents').upload(path, idFile, { upsert: true })
+          if (!upErr) {
+            const { data: { publicUrl } } = supabase.storage.from('id-documents').getPublicUrl(path)
+            idCardUrl = publicUrl
+          }
+        }
+      }
+
       await signUp({
         email,
         password: pw,
@@ -142,6 +166,9 @@ export default function Register() {
           bank_transit: transit,
           bank_institution_num: institution,
           bank_account: account,
+          ...(selfieUrl && { selfie_url: selfieUrl }),
+          ...(idCardUrl && { id_card_url: idCardUrl }),
+          ...(selfieUrl && idCardUrl && { verif_status: 'pending' }),
         }),
         // Profil proprio
         ...(role === 'proprio' && {
@@ -208,11 +235,17 @@ export default function Register() {
 
             <div className="flex gap-3 mb-4">
               <button className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-xl text-sm font-600 hover:border-gray-400 transition-all"
-                onClick={() => toast('🔗 Google OAuth à connecter dans Supabase', 'info')}>
+                onClick={async () => {
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: { redirectTo: `${window.location.origin}/accueil` }
+                  })
+                  if (error) toast(`❌ ${error.message}`, 'error')
+                }}>
                 <span>🇬</span> Google
               </button>
               <button className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-xl text-sm font-600 hover:border-gray-400 transition-all"
-                onClick={() => toast('🍎 Apple OAuth à connecter dans Supabase', 'info')}>
+                onClick={() => toast('🍎 Apple OAuth nécessite un Apple Developer Account — à configurer', 'info')}>
                 <span>🍎</span> Apple
               </button>
             </div>
@@ -240,7 +273,7 @@ export default function Register() {
               <input type="checkbox" checked={terms} onChange={e=>setTerms(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-coral flex-shrink-0" />
               <span className="text-xs text-gray-400 leading-relaxed">
-                J'accepte les <a className="text-coral font-600 underline">conditions d'utilisation</a> et la <a className="text-coral font-600 underline">politique de confidentialité</a> de ChaletProp.
+                J'accepte les <Link to="/conditions" className="text-coral font-600 underline">conditions d'utilisation</Link> et la <Link to="/confidentialite" className="text-coral font-600 underline">politique de confidentialité</Link> de ChaletProp.
               </span>
             </label>
           </div>

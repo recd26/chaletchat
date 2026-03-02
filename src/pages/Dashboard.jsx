@@ -14,8 +14,8 @@ const TABS = ['Mes chalets', '✅ Historique', '🔑 Accès', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
-  const { chalets, loading: loadChalets } = useChalets()
-  const { requests, loading: loadReqs, acceptOffer, submitReview } = useRequests()
+  const { chalets, loading: loadChalets, updateChalet } = useChalets()
+  const { requests, loading: loadReqs, acceptOffer, submitReview, completeRequest, updateRequest } = useRequests()
   const { toasts, toast } = useToast()
   const navigate = useNavigate()
   const [tab, setTab] = useState(0)
@@ -31,6 +31,38 @@ export default function Dashboard() {
   const [reviewData, setReviewData] = useState({}) // { [requestId]: { rating, comment } }
   const [reviewHover, setReviewHover] = useState({}) // { [requestId]: hoverStar }
   const [submittingReview, setSubmittingReview] = useState(null)
+  const [completing, setCompleting] = useState(null)
+  const [editingAccess, setEditingAccess] = useState(null) // chalet id
+  const [accessForm, setAccessForm] = useState({})
+  const [savingAccess, setSavingAccess] = useState(false)
+  const [editingRequest, setEditingRequest] = useState(null) // request id
+  const [editReqForm, setEditReqForm] = useState({})
+  const [savingRequest, setSavingRequest] = useState(false)
+
+  function startEditAccess(chalet) {
+    setEditingAccess(chalet.id)
+    setAccessForm({
+      access_code: chalet.access_code || '',
+      key_box: chalet.key_box || '',
+      parking_info: chalet.parking_info || '',
+      wifi_name: chalet.wifi_name || '',
+      wifi_password: chalet.wifi_password || '',
+      special_notes: chalet.special_notes || '',
+    })
+  }
+
+  async function saveAccess(chaletId) {
+    setSavingAccess(true)
+    try {
+      await updateChalet(chaletId, accessForm)
+      toast('✅ Accès mis à jour !', 'success')
+      setEditingAccess(null)
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setSavingAccess(false)
+    }
+  }
 
   function toggleCode(id) {
     setShowCode(prev => ({ ...prev, [id]: !prev[id] }))
@@ -65,11 +97,45 @@ export default function Dashboard() {
     }
   }
 
-  const myRequests = requests.filter(r =>
-    chalets.some(c => c.id === r.chalet_id)
-  )
+  // requests is already filtered by owner_id in useRequests hook — no extra filter needed
+  const myRequests = requests
   const completedRequests = myRequests.filter(r => r.status === 'completed')
   const totalSpent = completedRequests.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0)
+
+  function startEditRequest(req) {
+    setEditingRequest(req.id)
+    setEditReqForm({
+      scheduled_date: req.scheduled_date || '',
+      scheduled_time: req.scheduled_time || '',
+      deadline_time: req.deadline_time || '',
+      estimated_hours: req.estimated_hours || 3,
+      is_urgent: req.is_urgent || false,
+      special_notes: req.special_notes || '',
+    })
+  }
+
+  async function saveEditRequest(requestId) {
+    if (!editReqForm.scheduled_date || !editReqForm.scheduled_time) {
+      return toast('⚠️ Date et heure requises', 'error')
+    }
+    setSavingRequest(true)
+    try {
+      await updateRequest(requestId, {
+        scheduled_date: editReqForm.scheduled_date,
+        scheduled_time: editReqForm.scheduled_time,
+        deadline_time: editReqForm.deadline_time || null,
+        estimated_hours: parseFloat(editReqForm.estimated_hours),
+        is_urgent: editReqForm.is_urgent,
+        special_notes: editReqForm.special_notes || null,
+      })
+      toast('✅ Demande modifiée !', 'success')
+      setEditingRequest(null)
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setSavingRequest(false)
+    }
+  }
 
   async function handleReview(requestId, proId) {
     const data = reviewData[requestId]
@@ -122,7 +188,7 @@ export default function Dashboard() {
       {/* ── Onglet 0 : Mes chalets ── */}
       {tab === 0 && (
         <div>
-          {loadChalets ? (
+          {(loadChalets || loadReqs) ? (
             <div className="text-center py-12 text-gray-300 text-4xl">⏳</div>
           ) : chalets.length === 0 ? (
             <div className="card text-center py-12">
@@ -134,7 +200,7 @@ export default function Dashboard() {
           ) : (
             chalets.map(chalet => {
               const chaletReqs = myRequests.filter(r => r.chalet_id === chalet.id)
-              const req = chaletReqs.find(r => r.status !== 'completed') || chaletReqs[0]
+              const req = chaletReqs.find(r => r.status !== 'completed') || null
               const offers = req?.offers || []
               const tasks = req?.chalet?.checklist_templates || chalet.checklist_templates || []
               const completions = req?.checklist_completions || []
@@ -156,14 +222,24 @@ export default function Dashboard() {
                         ✏️ Modifier
                       </Link>
                       {req ? (
-                        <span className={`pill-${req.status === 'completed' ? 'done' : req.status === 'open' ? 'pending' : 'active'}`}>
-                          {req.status === 'open' ? '⏳ En attente' : req.status === 'confirmed' ? '✅ Confirmé' : req.status === 'completed' ? '✔ Complété' : req.status}
+                        <span className={`pill-${req.status === 'open' ? 'pending' : 'active'}`}>
+                          {req.status === 'open' ? '⏳ En attente' : req.status === 'confirmed' ? '✅ Confirmé' : req.status}
                         </span>
                       ) : (
-                        <span className="pill-done">Aucune demande</span>
+                        <span className="pill-done">Aucune demande active</span>
                       )}
                     </div>
                   </div>
+
+                  {/* Lien vers historique si missions complétées */}
+                  {!req && chaletReqs.some(r => r.status === 'completed') && (
+                    <button
+                      onClick={() => setTab(1)}
+                      className="w-full py-3 text-sm font-600 text-teal bg-teal/5 border border-teal/20 rounded-xl hover:bg-teal/10 transition-all mb-3"
+                    >
+                      📋 {chaletReqs.filter(r => r.status === 'completed').length} mission{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} complétée{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} — Voir l'historique
+                    </button>
+                  )}
 
                   {req && (
                     <>
@@ -173,7 +249,67 @@ export default function Dashboard() {
                         <span>⏰ {req.scheduled_time}</span>
                         {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
                         {req.agreed_price && <span className="text-teal font-700">💰 {req.agreed_price} $</span>}
+                        {req.status === 'open' && (
+                          <button onClick={() => startEditRequest(req)}
+                            className="text-coral font-600 hover:underline ml-auto">✏️ Modifier</button>
+                        )}
                       </div>
+
+                      {/* Formulaire modification demande (si ouverte) */}
+                      {editingRequest === req.id && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3">
+                          <h4 className="text-sm font-700 text-gray-700 mb-3">✏️ Modifier la demande</h4>
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Date *</label>
+                              <input type="date" className="input-field" value={editReqForm.scheduled_date}
+                                onChange={e => setEditReqForm(f => ({ ...f, scheduled_date: e.target.value }))} />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure *</label>
+                              <input type="time" className="input-field" value={editReqForm.scheduled_time}
+                                onChange={e => setEditReqForm(f => ({ ...f, scheduled_time: e.target.value }))} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure limite</label>
+                              <input type="time" className="input-field" value={editReqForm.deadline_time || ''}
+                                onChange={e => setEditReqForm(f => ({ ...f, deadline_time: e.target.value }))} />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Durée estimée</label>
+                              <select className="input-field" value={editReqForm.estimated_hours}
+                                onChange={e => setEditReqForm(f => ({ ...f, estimated_hours: e.target.value }))}>
+                                {['1', '1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '7', '8'].map(h => (
+                                  <option key={h} value={h}>{h}h</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mb-3">
+                            <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Notes spéciales</label>
+                            <textarea className="input-field min-h-16 resize-none" placeholder="Instructions..."
+                              value={editReqForm.special_notes || ''}
+                              onChange={e => setEditReqForm(f => ({ ...f, special_notes: e.target.value }))} />
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer mb-4">
+                            <div className={`w-11 h-6 rounded-full relative transition-colors ${editReqForm.is_urgent ? 'bg-coral' : 'bg-gray-200'}`}
+                              onClick={() => setEditReqForm(f => ({ ...f, is_urgent: !f.is_urgent }))}>
+                              <div className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5"
+                                style={{ transform: editReqForm.is_urgent ? 'translateX(22px)' : 'translateX(0)' }} />
+                            </div>
+                            <span className="text-sm font-600 text-gray-700">Demande urgente</span>
+                          </label>
+                          <div className="flex gap-2">
+                            <button onClick={() => saveEditRequest(req.id)} disabled={savingRequest}
+                              className="btn-primary text-xs py-2 disabled:opacity-60">
+                              {savingRequest ? '⏳...' : '💾 Sauvegarder'}
+                            </button>
+                            <button onClick={() => setEditingRequest(null)} className="btn-secondary text-xs py-2">Annuler</button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Checklist progress */}
                       {total > 0 && (
@@ -196,7 +332,7 @@ export default function Dashboard() {
 
                       {/* Pro accepté (demande confirmée) */}
                       {req.status === 'confirmed' && (() => {
-                        const accepted = offers.find(o => o.status === 'accepted')
+                        const accepted = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
                         return accepted ? (
                           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
                             <div className="flex items-center justify-between">
@@ -216,6 +352,28 @@ export default function Dashboard() {
                           </div>
                         ) : null
                       })()}
+
+                      {/* Bouton terminer la mission manuellement (proprio) */}
+                      {req.status === 'confirmed' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Confirmer la complétion et transférer à l\'historique ?')) return
+                            setCompleting(req.id)
+                            try {
+                              await completeRequest(req.id)
+                              toast('✅ Mission transférée à l\'historique !', 'success')
+                            } catch (e) {
+                              toast('Erreur : ' + e.message, 'error')
+                            } finally {
+                              setCompleting(null)
+                            }
+                          }}
+                          disabled={completing === req.id}
+                          className="w-full py-2.5 mb-3 text-sm font-700 rounded-xl border-2 border-green-500 text-green-700 bg-green-50 hover:bg-green-100 transition-all disabled:opacity-50"
+                        >
+                          {completing === req.id ? '⏳ Transfert...' : '✅ Terminer → Historique'}
+                        </button>
+                      )}
 
                       {/* Bouton ouvrir / fermer la demande */}
                       {req.status === 'confirmed' && total > 0 && (
@@ -401,7 +559,14 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-coral-light to-amber-300 flex items-center justify-center text-lg">👩</div>
                                 <div>
                                   <p className="text-sm font-700 text-gray-800">{offer.pro?.first_name} {offer.pro?.last_name}</p>
-                                  <p className="text-xs text-amber-500">★★★★★ 4.9</p>
+                                  <p className="text-xs text-amber-500">{(() => {
+                                    const proReviews = myRequests
+                                      .filter(r => r.assigned_pro_id === offer.pro_id && r.status === 'completed' && r.reviews?.length > 0)
+                                      .flatMap(r => r.reviews.filter(rv => rv.reviewee_id === offer.pro_id))
+                                    if (proReviews.length === 0) return '☆ Nouveau'
+                                    const avg = (proReviews.reduce((s, r) => s + r.rating, 0) / proReviews.length).toFixed(1)
+                                    return `${'★'.repeat(Math.round(avg))}${'☆'.repeat(5 - Math.round(avg))} ${avg}`
+                                  })()}</p>
                                 </div>
                               </div>
                               <div className="text-right">
@@ -477,7 +642,9 @@ export default function Dashboard() {
               const chalet = chalets.find(c => c.id === req.chalet_id)
               const tasks = req.chalet?.checklist_templates || chalet?.checklist_templates || []
               const completions = req.checklist_completions || []
-              const accepted = req.offers?.find(o => o.status === 'accepted')
+              const accepted = req.offers?.find(o => o.status === 'accepted') || req.offers?.find(o => o.pro_id === req.assigned_pro_id)
+              const reviewTargetId = accepted?.pro_id || req.assigned_pro_id
+              const reviewTargetName = accepted?.pro?.first_name || 'le professionnel'
               const isExpanded = openCompleted === req.id
               const myReview = req.reviews?.find(r => r.reviewer_id === profile?.id)
               const rd = reviewData[req.id] || {}
@@ -498,15 +665,17 @@ export default function Dashboard() {
                   </div>
 
                   {/* Pro qui a fait la mission */}
-                  {accepted && (
+                  {(accepted || req.assigned_pro_id) && (
                     <div className="flex items-center gap-3 bg-green-50 rounded-xl px-4 py-2.5 mb-3">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-sm text-white">🧹</div>
                       <div className="flex-1">
-                        <p className="text-sm font-700 text-gray-800">{accepted.pro?.first_name} {accepted.pro?.last_name}</p>
+                        <p className="text-sm font-700 text-gray-800">{accepted?.pro?.first_name || 'Professionnel'} {accepted?.pro?.last_name || ''}</p>
                         <p className="text-xs text-green-600">Mission complétée</p>
                       </div>
-                      <button onClick={() => setViewingPro(accepted.pro)}
-                        className="text-xs font-600 text-gray-400 hover:text-teal">Profil</button>
+                      {accepted?.pro && (
+                        <button onClick={() => setViewingPro(accepted.pro)}
+                          className="text-xs font-600 text-gray-400 hover:text-teal">Profil</button>
+                      )}
                     </div>
                   )}
 
@@ -594,9 +763,9 @@ export default function Dashboard() {
                       </div>
                       {myReview.comment && <p className="text-xs text-amber-600">{myReview.comment}</p>}
                     </div>
-                  ) : accepted ? (
+                  ) : reviewTargetId ? (
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      <p className="text-xs font-700 text-gray-700 mb-2">⭐ Évaluer {accepted.pro?.first_name}</p>
+                      <p className="text-xs font-700 text-gray-700 mb-2">⭐ Évaluer {reviewTargetName}</p>
                       <div className="flex gap-1 mb-3">
                         {Array.from({length: 5}).map((_, j) => (
                           <button key={j}
@@ -621,7 +790,7 @@ export default function Dashboard() {
                       />
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleReview(req.id, accepted.pro_id)}
+                          onClick={() => handleReview(req.id, reviewTargetId)}
                           disabled={submittingReview === req.id}
                           className="btn-primary text-xs py-2 disabled:opacity-60"
                         >
@@ -692,11 +861,57 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <button
-                onClick={() => toast('💾 Formulaire d\'édition des accès — à compléter avec React Hook Form', 'info')}
-                className="btn-secondary text-xs mt-3">
-                {chalet.access_code ? '✏️ Modifier' : '➕ Configurer les accès'}
-              </button>
+              {editingAccess === chalet.id ? (
+                <div className="mt-4 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h4 className="text-sm font-700 text-gray-700 mb-3">🔑 Modifier les accès</h4>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Code porte</label>
+                      <input className="input-field" placeholder="1234#" value={accessForm.access_code}
+                        onChange={e => setAccessForm(f => ({ ...f, access_code: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Boîte à clé</label>
+                      <input className="input-field" placeholder="Sous le perron" value={accessForm.key_box}
+                        onChange={e => setAccessForm(f => ({ ...f, key_box: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Stationnement</label>
+                    <input className="input-field" placeholder="2 places disponibles devant" value={accessForm.parking_info}
+                      onChange={e => setAccessForm(f => ({ ...f, parking_info: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Nom Wi-Fi</label>
+                      <input className="input-field" placeholder="ChaletWifi" value={accessForm.wifi_name}
+                        onChange={e => setAccessForm(f => ({ ...f, wifi_name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Mot de passe Wi-Fi</label>
+                      <input className="input-field" placeholder="••••••" value={accessForm.wifi_password}
+                        onChange={e => setAccessForm(f => ({ ...f, wifi_password: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Notes spéciales</label>
+                    <textarea className="input-field min-h-16 resize-none" placeholder="Instructions particulières..."
+                      value={accessForm.special_notes}
+                      onChange={e => setAccessForm(f => ({ ...f, special_notes: e.target.value }))} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => saveAccess(chalet.id)} disabled={savingAccess}
+                      className="btn-primary text-xs py-2 disabled:opacity-60">
+                      {savingAccess ? '⏳...' : '💾 Sauvegarder'}
+                    </button>
+                    <button onClick={() => setEditingAccess(null)} className="btn-secondary text-xs py-2">Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => startEditAccess(chalet)} className="btn-secondary text-xs mt-3">
+                  {chalet.access_code ? '✏️ Modifier' : '➕ Configurer les accès'}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -831,11 +1046,43 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Évaluations placeholder */}
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <Star size={16} className="text-amber-500" />
-                <span className="text-sm font-600 text-amber-700">Évaluations à venir</span>
-              </div>
+              {/* Évaluations réelles */}
+              {(() => {
+                const proRevs = myRequests
+                  .filter(r => r.assigned_pro_id === viewingPro.id && r.status === 'completed' && r.reviews?.length > 0)
+                  .flatMap(r => r.reviews.filter(rv => rv.reviewee_id === viewingPro.id))
+                const avg = proRevs.length > 0
+                  ? (proRevs.reduce((s, r) => s + r.rating, 0) / proRevs.length).toFixed(1)
+                  : null
+                return proRevs.length > 0 ? (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex gap-0.5">
+                        {Array.from({length: 5}).map((_, j) => (
+                          <Star key={j} size={14} className={j < Math.round(avg) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                        ))}
+                      </div>
+                      <span className="text-sm font-700 text-amber-600">{avg}/5</span>
+                      <span className="text-xs text-gray-400">({proRevs.length} éval.)</span>
+                    </div>
+                    {proRevs.slice(0, 3).map((rev, i) => (
+                      <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-1.5 text-xs">
+                        <div className="flex gap-0.5 mb-1">
+                          {Array.from({length: 5}).map((_, j) => (
+                            <Star key={j} size={10} className={j < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                          ))}
+                        </div>
+                        {rev.comment && <p className="text-gray-600">"{rev.comment}"</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                    <Star size={16} className="text-gray-300" />
+                    <span className="text-sm font-600 text-gray-400">Aucune évaluation pour le moment</span>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="px-5 pb-5">

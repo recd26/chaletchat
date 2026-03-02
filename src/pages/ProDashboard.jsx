@@ -3,7 +3,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Camera, CheckCircle, Star, Map, List, MessageSquare } from 'lucide-react'
+import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import ChatPanel from '../components/ChatPanel'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress } from '../lib/geocode'
@@ -14,7 +15,7 @@ const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missi
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
-  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby } = useRequests()
+  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, completeRequest, submitReview, updateOffer } = useRequests()
   const { toasts, toast } = useToast()
 
   const [tab,        setTab]        = useState(0)
@@ -33,6 +34,39 @@ export default function ProDashboard() {
   const [editProv,     setEditProv]     = useState('')
   const [editPostal,   setEditPostal]   = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
+  const [completing, setCompleting] = useState(null)
+  const [uploadingDoc, setUploadingDoc] = useState(null) // 'selfie' | 'id_card'
+  const [reviewData, setReviewData] = useState({}) // { [requestId]: { rating, comment } }
+  const [reviewHover, setReviewHover] = useState({}) // { [requestId]: hoverStar }
+  const [submittingReview, setSubmittingReview] = useState(null)
+  const [editingOffer, setEditingOffer] = useState(null) // request id
+  const [editOfferPrice, setEditOfferPrice] = useState('')
+  const [editOfferMsg, setEditOfferMsg] = useState('')
+  const [savingOffer, setSavingOffer] = useState(false)
+
+  async function handleDocUpload(type, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingDoc(type)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${profile.id}/${type}-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('id-documents')
+        .upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: { publicUrl } } = supabase.storage
+        .from('id-documents')
+        .getPublicUrl(path)
+      const field = type === 'selfie' ? 'selfie_url' : 'id_card_url'
+      await updateProfile({ [field]: publicUrl })
+      toast(`📸 ${type === 'selfie' ? 'Selfie' : 'Pièce d\'identité'} téléversé(e) !`, 'success')
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setUploadingDoc(null)
+    }
+  }
 
   // Demandes ouvertes filtrées par rayon
   const openReqs = getOpenRequestsNearby(profile)
@@ -60,6 +94,35 @@ export default function ProDashboard() {
       setOfferMsg(m => ({ ...m, [requestId]: '' }))
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
+    }
+  }
+
+  async function handleReview(requestId, ownerId) {
+    const data = reviewData[requestId]
+    if (!data?.rating) return toast('⚠️ Sélectionnez une note', 'error')
+    setSubmittingReview(requestId)
+    try {
+      await submitReview(requestId, ownerId, data.rating, data.comment || '')
+      toast('⭐ Évaluation envoyée ! Merci !', 'success')
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setSubmittingReview(null)
+    }
+  }
+
+  async function handleUpdateOffer(offerId) {
+    const price = parseFloat(editOfferPrice)
+    if (!price || price <= 0) return toast('⚠️ Entrez un prix valide', 'error')
+    setSavingOffer(true)
+    try {
+      await updateOffer(offerId, price, editOfferMsg || '')
+      toast('✅ Offre modifiée !', 'success')
+      setEditingOffer(null)
+    } catch (err) {
+      toast(`❌ ${err.message}`, 'error')
+    } finally {
+      setSavingOffer(false)
     }
   }
 
@@ -153,6 +216,26 @@ export default function ProDashboard() {
                         🎉 Checklist complète ! 💸 <strong>{req.agreed_price}$</strong> en cours de versement.
                       </div>
                     )}
+
+                    {/* Bouton terminer la mission manuellement */}
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Terminer cette mission et la transférer à l\'historique ?')) return
+                        setCompleting(req.id)
+                        try {
+                          await completeRequest(req.id)
+                          toast('✅ Mission transférée à l\'historique !', 'success')
+                        } catch (e) {
+                          toast('Erreur : ' + e.message, 'error')
+                        } finally {
+                          setCompleting(null)
+                        }
+                      }}
+                      disabled={completing === req.id}
+                      className="w-full py-2.5 mb-2 text-sm font-700 rounded-xl border-2 border-green-500 text-green-700 bg-green-50 hover:bg-green-100 transition-all disabled:opacity-50"
+                    >
+                      {completing === req.id ? '⏳ Transfert...' : '✅ Terminer → Historique'}
+                    </button>
 
                     {/* Bouton ouvrir / fermer */}
                     <button
@@ -372,6 +455,12 @@ export default function ProDashboard() {
                   proLat={profile?.lat}
                   proLng={profile?.lng}
                   radius={profile?.radius_km || 25}
+                  onRequestClick={(reqId) => {
+                    setViewMode('list')
+                    setTimeout(() => {
+                      document.getElementById(`request-${reqId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }, 100)
+                  }}
                 />
               </Suspense>
               <p className="text-xs text-gray-400 text-center mt-2">Cliquez sur un 🏔 pour voir les détails</p>
@@ -388,7 +477,7 @@ export default function ProDashboard() {
             </div>
           ) : viewMode === 'list' ? (
             openReqs.map(req => (
-              <div key={req.id} className="card mb-4 hover:border-teal transition-all">
+              <div key={req.id} id={`request-${req.id}`} className="card mb-4 hover:border-teal transition-all">
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
@@ -451,7 +540,8 @@ export default function ProDashboard() {
                 {/* Faire une offre / statut offre */}
                 {(() => {
                   const myOffer = req.offers?.find(o => o.pro_id === profile?.id)
-                  if (myOffer?.status === 'accepted') {
+                  // Offre acceptée : soit status='accepted', soit la demande est confirmée et le pro est assigné
+                  if (myOffer?.status === 'accepted' || (myOffer && req.status === 'confirmed' && req.assigned_pro_id === profile?.id)) {
                     return (
                       <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-600">
                         ✅ Offre acceptée — {myOffer.price} $ • La mission apparaîtra dans vos missions actives.
@@ -459,13 +549,59 @@ export default function ProDashboard() {
                     )
                   }
                   if (myOffer?.status === 'pending') {
+                    if (editingOffer === req.id) {
+                      return (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                          <p className="text-sm font-700 text-amber-700 mb-3">✏️ Modifier votre offre</p>
+                          <div className="flex gap-2 items-center mb-3">
+                            <div className="flex-1 relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-700 text-sm">$</span>
+                              <input
+                                type="number"
+                                placeholder="Nouveau prix"
+                                value={editOfferPrice}
+                                onChange={e => setEditOfferPrice(e.target.value)}
+                                className="input-field-teal pl-7"
+                              />
+                            </div>
+                          </div>
+                          <textarea
+                            className="input-field-teal text-xs min-h-12 resize-none mb-3 w-full"
+                            placeholder="Message (optionnel)"
+                            value={editOfferMsg}
+                            onChange={e => setEditOfferMsg(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleUpdateOffer(myOffer.id)}
+                              disabled={savingOffer}
+                              className="btn-teal text-xs disabled:opacity-60">
+                              {savingOffer ? '⏳...' : '💾 Sauvegarder'}
+                            </button>
+                            <button onClick={() => setEditingOffer(null)}
+                              className="btn-secondary text-xs">Annuler</button>
+                          </div>
+                        </div>
+                      )
+                    }
                     return (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
                         <div>
                           <p className="text-sm font-700 text-amber-700">Offre envoyée — {myOffer.price} $</p>
                           <p className="text-xs text-amber-500">En attente de réponse du propriétaire</p>
                         </div>
-                        <span className="text-2xl">⏳</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingOffer(req.id)
+                              setEditOfferPrice(myOffer.price?.toString() || '')
+                              setEditOfferMsg(myOffer.message || '')
+                            }}
+                            className="text-xs font-600 text-amber-700 bg-amber-100 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-all">
+                            ✏️ Modifier
+                          </button>
+                          <span className="text-2xl">⏳</span>
+                        </div>
                       </div>
                     )
                   }
@@ -525,18 +661,37 @@ export default function ProDashboard() {
             <h3 className="font-700 text-gray-900 mb-4">📸 Documents requis</h3>
             <div className="grid grid-cols-2 gap-3 mb-4">
               {[
-                { icon:'🤳', title:'Selfie', sub:'Visage visible, bonne lumière', done: !!profile?.selfie_url },
-                { icon:'🪪', title:'Pièce d\'identité', sub:'Passeport, permis ou carte officielle', done: !!profile?.id_card_url },
+                { type:'selfie', icon:'🤳', title:'Selfie', sub:'Visage visible, bonne lumière', done: !!profile?.selfie_url, url: profile?.selfie_url },
+                { type:'id_card', icon:'🪪', title:'Pièce d\'identité', sub:'Passeport, permis ou carte officielle', done: !!profile?.id_card_url, url: profile?.id_card_url },
               ].map(box => (
-                <div key={box.title}
-                  className={`border-2 rounded-xl p-4 text-center transition-all ${
-                    box.done ? 'border-teal bg-teal/5' : 'border-dashed border-gray-200 hover:border-teal hover:bg-teal/3 cursor-pointer'
-                  }`}
-                  onClick={() => !box.done && toast('📁 Upload vers Supabase Storage à intégrer ici', 'info')}>
-                  <div className="text-3xl mb-2">{box.icon}</div>
-                  <p className="text-sm font-700 text-gray-800">{box.done ? `✅ ${box.title}` : box.title}</p>
-                  <p className="text-xs text-gray-400 mt-1">{box.sub}</p>
-                  {box.done && <div className="w-5 h-5 bg-teal rounded-full flex items-center justify-center text-white text-xs mx-auto mt-2">✓</div>}
+                <div key={box.type} className={`border-2 rounded-xl p-4 text-center transition-all ${
+                  box.done ? 'border-teal bg-teal/5' : 'border-dashed border-gray-200'
+                }`}>
+                  {box.done && box.url ? (
+                    <>
+                      <img src={box.url} alt={box.title} className="w-16 h-16 rounded-xl object-cover mx-auto mb-2 border-2 border-teal/30" />
+                      <p className="text-sm font-700 text-teal">✅ {box.title}</p>
+                      <label className="cursor-pointer text-xs text-gray-400 hover:text-teal transition-colors mt-1 inline-block">
+                        Remplacer
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={e => handleDocUpload(box.type, e)} />
+                      </label>
+                    </>
+                  ) : (
+                    <label className="cursor-pointer block">
+                      <div className="text-3xl mb-2">{uploadingDoc === box.type ? '⏳' : box.icon}</div>
+                      <p className="text-sm font-700 text-gray-800">
+                        {uploadingDoc === box.type ? 'Envoi...' : box.title}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">{box.sub}</p>
+                      <div className="mt-2 flex items-center justify-center gap-1 text-xs text-teal font-600">
+                        <Upload size={12} /> Téléverser
+                      </div>
+                      <input type="file" accept="image/*" className="hidden"
+                        disabled={uploadingDoc === box.type}
+                        onChange={e => handleDocUpload(box.type, e)} />
+                    </label>
+                  )}
                 </div>
               ))}
             </div>
@@ -562,9 +717,25 @@ export default function ProDashboard() {
               </div>
             </div>
 
-            <button onClick={() => toast('📤 Documents soumis pour vérification !', 'success')}
-              className="btn-teal w-full py-3">
-              📤 Soumettre pour vérification
+            <button
+              onClick={async () => {
+                if (!profile?.selfie_url || !profile?.id_card_url) {
+                  return toast('⚠️ Téléversez votre selfie et pièce d\'identité avant de soumettre', 'error')
+                }
+                try {
+                  await updateProfile({ verif_status: 'pending' })
+                  toast('📤 Documents soumis pour vérification ! Réponse sous 24h.', 'success')
+                } catch (err) {
+                  toast(`❌ ${err.message}`, 'error')
+                }
+              }}
+              disabled={profile?.verif_status === 'pending' || profile?.verif_status === 'approved'}
+              className="btn-teal w-full py-3 disabled:opacity-60">
+              {profile?.verif_status === 'approved'
+                ? '✅ Identité vérifiée'
+                : profile?.verif_status === 'pending'
+                  ? '⏳ Vérification en cours...'
+                  : '📤 Soumettre pour vérification'}
             </button>
           </div>
 
@@ -805,6 +976,62 @@ export default function ProDashboard() {
                       })}
                     </div>
                   )}
+
+                  {/* Évaluation du propriétaire */}
+                  {(() => {
+                    const myReview = req.reviews?.find(r => r.reviewer_id === profile?.id)
+                    const rd = reviewData[req.id] || {}
+                    const rh = reviewHover[req.id] || 0
+                    if (myReview) {
+                      return (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-700 text-amber-700">Votre évaluation</p>
+                            <div className="flex gap-0.5">
+                              {Array.from({length: 5}).map((_, j) => (
+                                <Star key={j} size={14} className={j < myReview.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                              ))}
+                            </div>
+                          </div>
+                          {myReview.comment && <p className="text-xs text-amber-600">{myReview.comment}</p>}
+                        </div>
+                      )
+                    }
+                    return req.owner_id ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mt-3">
+                        <p className="text-xs font-700 text-gray-700 mb-2">⭐ Évaluer le propriétaire</p>
+                        <div className="flex gap-1 mb-3">
+                          {Array.from({length: 5}).map((_, j) => (
+                            <button key={j}
+                              onMouseEnter={() => setReviewHover(h => ({ ...h, [req.id]: j + 1 }))}
+                              onMouseLeave={() => setReviewHover(h => ({ ...h, [req.id]: 0 }))}
+                              onClick={() => setReviewData(d => ({ ...d, [req.id]: { ...d[req.id], rating: j + 1 } }))}
+                            >
+                              <Star size={22} className={
+                                j < (rh || rd.rating || 0)
+                                  ? 'fill-amber-400 text-amber-400 transition-all'
+                                  : 'text-gray-300 transition-all hover:text-amber-300'
+                              } />
+                            </button>
+                          ))}
+                          {rd.rating && <span className="text-sm font-700 text-amber-600 ml-2">{rd.rating}/5</span>}
+                        </div>
+                        <textarea
+                          className="input-field text-xs min-h-16 resize-none mb-2 w-full"
+                          placeholder="Un commentaire ? (optionnel)"
+                          value={rd.comment || ''}
+                          onChange={e => setReviewData(d => ({ ...d, [req.id]: { ...d[req.id], comment: e.target.value } }))}
+                        />
+                        <button
+                          onClick={() => handleReview(req.id, req.owner_id)}
+                          disabled={submittingReview === req.id}
+                          className="btn-teal text-xs py-2 disabled:opacity-60"
+                        >
+                          {submittingReview === req.id ? '⏳...' : '⭐ Envoyer l\'évaluation'}
+                        </button>
+                      </div>
+                    ) : null
+                  })()}
                 </div>
               )
             })

@@ -8,7 +8,10 @@ import Login        from './pages/Login'
 import Register     from './pages/Register'
 import Dashboard    from './pages/Dashboard'
 import ProDashboard from './pages/ProDashboard'
-import Paiement     from './pages/Paiement'
+import Paiement         from './pages/Paiement'
+import Conditions       from './pages/Conditions'
+import Confidentialite  from './pages/Confidentialite'
+import AdminDashboard   from './pages/AdminDashboard'
 import NewChalet    from './pages/NewChalet'
 import EditChalet   from './pages/EditChalet'
 import NewRequest   from './pages/NewRequest'
@@ -31,6 +34,15 @@ function AppRoutes() {
         <Route path="/login"     element={<Login />} />
         <Route path="/inscription" element={<Register />} />
         <Route path="/paiement"  element={<Paiement />} />
+        <Route path="/conditions" element={<Conditions />} />
+        <Route path="/confidentialite" element={<Confidentialite />} />
+
+        {/* Admin */}
+        <Route path="/admin" element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
 
         {/* Redirige /dashboard selon le rôle */}
         <Route path="/accueil"   element={<RoleRedirect />} />

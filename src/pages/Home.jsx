@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 
 const FLOW = [
   { icon: '🏡', label: 'Inscription',     sub: 'Profil chalet' },
@@ -22,6 +24,30 @@ const FEATURES = [
 
 export default function Home() {
   const { user, profile } = useAuth()
+  const [stats, setStats] = useState({ avgRating: null, completedCount: null })
+
+  useEffect(() => {
+    // Fetch real stats
+    async function fetchStats() {
+      try {
+        // Moyenne des reviews
+        const { data: reviews } = await supabase.from('reviews').select('rating')
+        if (reviews && reviews.length > 0) {
+          const avg = (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+          setStats(prev => ({ ...prev, avgRating: avg }))
+        }
+        // Nombre de missions complétées
+        const { count } = await supabase
+          .from('cleaning_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'completed')
+        setStats(prev => ({ ...prev, completedCount: count }))
+      } catch (e) {
+        // Silently fail — stats will show defaults
+      }
+    }
+    fetchStats()
+  }, [])
 
   return (
     <div>
@@ -60,7 +86,11 @@ export default function Home() {
             )}
 
             <div className="flex gap-7 mt-9 pt-7 border-t border-white/25">
-              {[['4.9★','Note moyenne'],['2h','Délai de réponse'],['3%','Frais de service']].map(([num,lbl]) => (
+              {[
+                [stats.avgRating ? `${stats.avgRating}★` : '—★', 'Note moyenne'],
+                [stats.completedCount !== null ? `${stats.completedCount}` : '—', 'Missions complétées'],
+                ['3%', 'Frais de service']
+              ].map(([num, lbl]) => (
                 <div key={lbl}>
                   <div className="text-2xl font-800 text-white">{num}</div>
                   <div className="text-xs text-white/70 mt-0.5">{lbl}</div>
@@ -89,7 +119,7 @@ export default function Home() {
               </div>
               <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal to-teal-light flex items-center justify-content-center text-sm flex items-center justify-center">✅</div>
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-sm">✅</div>
                   <div>
                     <p className="text-xs font-700 text-gray-800">💸 Paiement libéré auto</p>
                     <p className="text-xs text-gray-400">Chalet Boreal • hier</p>
