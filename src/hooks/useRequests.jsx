@@ -57,6 +57,11 @@ export function useRequests() {
 
       const { data, error } = await query
       if (error) throw error
+      // Debug: vérifier si les offres sont chargées
+      if (data?.length > 0) {
+        const withOffers = data.filter(r => r.offers?.length > 0)
+        console.log(`[useRequests] ${data.length} demandes, ${withOffers.length} avec offres`, withOffers.map(r => ({ id: r.id, status: r.status, offers: r.offers?.length })))
+      }
       setRequests(data)
     } catch (err) {
       console.error(err)
@@ -252,10 +257,44 @@ export function useRequests() {
   }
 
   async function updateRequest(requestId, updates) {
+    const req = requests.find(r => r.id === requestId)
+    const existingOffers = req?.offers || []
+
+    // 1. Mettre à jour la demande
     const { error } = await supabase.from('cleaning_requests')
       .update(updates)
       .eq('id', requestId)
     if (error) throw error
+
+    // 2. Supprimer les offres existantes (remet en "En attente d'offres")
+    if (existingOffers.length > 0) {
+      const { error: delErr } = await supabase.from('offers')
+        .delete()
+        .eq('request_id', requestId)
+      if (delErr) console.warn('Erreur suppression offres:', delErr.message)
+
+      // 3. Notifier chaque pro que leur offre a été retirée
+      for (const offer of existingOffers) {
+        await sendNotification({
+          userId: offer.pro_id,
+          type: 'offer_declined',
+          title: 'Demande modifiée',
+          body: `Le propriétaire a modifié la demande pour ${req?.chalet?.name || 'un chalet'}. Votre offre a été retirée, vous pouvez en soumettre une nouvelle.`,
+          requestId,
+          senderId: user.id,
+        })
+      }
+    }
+
+    // 4. Re-notifier les pros à proximité de la demande mise à jour
+    if (req?.chalet) {
+      notifyNearbyPros({
+        request: { ...req, id: requestId },
+        chalet: req.chalet,
+        senderId: user.id,
+      })
+    }
+
     await fetchRequests()
   }
 

@@ -241,8 +241,10 @@ export default function Dashboard() {
                         ✏️ Modifier
                       </Link>
                       {req ? (
-                        <span className={`pill-${req.status === 'open' ? 'pending' : 'active'}`}>
-                          {req.status === 'open' ? '⏳ En attente' : req.status === 'confirmed' ? '✅ Confirmé' : req.status}
+                        <span className={`pill-${req.status === 'open' ? (offers.length > 0 ? 'coral' : 'pending') : 'active'}`}>
+                          {req.status === 'open'
+                            ? (offers.length > 0 ? `📨 En révision (${offers.length})` : '⏳ En attente')
+                            : req.status === 'confirmed' ? '✅ Confirmé' : req.status}
                         </span>
                       ) : (
                         <span className="pill-done">Aucune demande active</span>
@@ -677,8 +679,10 @@ export default function Dashboard() {
                               <h3 className="font-700 text-gray-900">🏔 {chalet?.name || 'Chalet'}</h3>
                               <p className="text-xs text-gray-400 mt-0.5">{chalet?.city}</p>
                             </div>
-                            <span className={`pill-${req.status === 'open' ? 'pending' : 'active'}`}>
-                              {req.status === 'open' ? '⏳ En attente d\'offres' : '✅ Confirmé'}
+                            <span className={`pill-${req.status === 'open' ? (offers.length > 0 ? 'coral' : 'pending') : 'active'}`}>
+                              {req.status === 'open'
+                                ? (offers.length > 0 ? `📨 En révision (${offers.length})` : '⏳ En attente d\'offres')
+                                : '✅ Confirmé'}
                             </span>
                           </div>
 
