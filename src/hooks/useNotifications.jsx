@@ -8,7 +8,8 @@ export function useNotifications() {
   const [loading, setLoading] = useState(true)
   const channelRef = useRef(null)
 
-  const unreadCount = notifications.filter(n => !n.read_at).length
+  // Adapté au schéma : is_read (boolean) au lieu de read_at (timestamptz)
+  const unreadCount = notifications.filter(n => !n.is_read).length
 
   useEffect(() => {
     if (!user) return
@@ -36,14 +37,16 @@ export function useNotifications() {
   async function fetchNotifications() {
     setLoading(true)
     try {
+      // Pas de join sender — la colonne sender_id n'existe pas dans la table
+      // Les infos sender sont dans data.sender_id si besoin
       const { data, error } = await supabase
         .from('notifications')
-        .select('*, sender:profiles!sender_id(first_name, last_name, role)')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50)
       if (error) throw error
-      setNotifications(data)
+      setNotifications(data || [])
     } catch (err) {
       console.error('Erreur notifications:', err)
     } finally {
@@ -54,23 +57,23 @@ export function useNotifications() {
   async function markAsRead(notificationId) {
     const { error } = await supabase
       .from('notifications')
-      .update({ read_at: new Date().toISOString() })
+      .update({ is_read: true })
       .eq('id', notificationId)
     if (error) throw error
     setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n)
+      prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
     )
   }
 
   async function markAllAsRead() {
     const { error } = await supabase
       .from('notifications')
-      .update({ read_at: new Date().toISOString() })
+      .update({ is_read: true })
       .eq('user_id', user.id)
-      .is('read_at', null)
+      .eq('is_read', false)
     if (error) throw error
     setNotifications(prev =>
-      prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
+      prev.map(n => ({ ...n, is_read: true }))
     )
   }
 

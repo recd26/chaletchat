@@ -3,6 +3,7 @@ import { haversineDistance } from './geocode'
 
 /**
  * Envoie une notification in-app + email
+ * Adapté au schéma : notifications(user_id, title, message, type, is_read, data)
  */
 export async function sendNotification({ userId, type, title, body, requestId, senderId }) {
   // 1. Notification in-app (insert dans la table)
@@ -10,9 +11,8 @@ export async function sendNotification({ userId, type, title, body, requestId, s
     user_id: userId,
     type,
     title,
-    body,
-    request_id: requestId,
-    sender_id: senderId,
+    message: body,
+    data: { request_id: requestId, sender_id: senderId },
   })
   if (error) {
     console.error('Erreur notification insert:', error.message, { userId, type, title })

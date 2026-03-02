@@ -51,7 +51,7 @@ export default function NotificationBell() {
   }
 
   function handleClickNotif(notif) {
-    if (!notif.read_at) markAsRead(notif.id)
+    if (!notif.is_read) markAsRead(notif.id)
   }
 
   return (
@@ -97,7 +97,7 @@ export default function NotificationBell() {
                     key={notif.id}
                     onClick={() => handleClickNotif(notif)}
                     className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-all border-b border-gray-50 ${
-                      !notif.read_at ? 'bg-blue-50/40' : ''
+                      !notif.is_read ? 'bg-blue-50/40' : ''
                     }`}
                   >
                     <div className={`mt-0.5 ${color}`}>
@@ -105,12 +105,12 @@ export default function NotificationBell() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-600 text-gray-800 truncate">{notif.title}</p>
-                      {notif.body && (
-                        <p className="text-xs text-gray-400 truncate">{notif.body}</p>
+                      {notif.message && (
+                        <p className="text-xs text-gray-400 truncate">{notif.message}</p>
                       )}
                       <p className="text-[11px] text-gray-300 mt-0.5">{timeAgo(notif.created_at)}</p>
                     </div>
-                    {!notif.read_at && (
+                    {!notif.is_read && (
                       <div className="w-2 h-2 bg-coral rounded-full mt-2 flex-shrink-0" />
                     )}
                   </div>
