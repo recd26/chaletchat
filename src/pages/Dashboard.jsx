@@ -5,12 +5,12 @@ import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages, CheckCircle, Camera } from 'lucide-react'
+import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages, CheckCircle, Camera, Home, Bed, Bath } from 'lucide-react'
 import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
-const TABS = ['🏡 Chalets', '📋 Demandes', '✅ Historique', '🔑 Accès', '💳 Paiement']
+const TABS = ['🏡 Tableau de bord', '🏔 Mes chalets', '📋 Demandes', '✅ Historique', '🔑 Accès', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -101,7 +101,7 @@ export default function Dashboard() {
   function handleNewRequest() {
     if (!savedCard) {
       toast('💳 Ajoutez une méthode de paiement avant de créer une demande', 'info')
-      setTab(4)
+      setTab(5)
       return
     }
     navigate('/nouvelle-demande')
@@ -193,10 +193,10 @@ export default function Dashboard() {
       </div>
 
       {/* Onglets */}
-      <div className="flex gap-1 border-b border-gray-200 mb-6">
+      <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
         {TABS.map((t, i) => (
           <button key={t} onClick={() => setTab(i)}
-            className={`px-4 py-2.5 text-sm font-600 border-b-2 -mb-px transition-all ${
+            className={`px-4 py-2.5 text-sm font-600 border-b-2 -mb-px transition-all whitespace-nowrap ${
               tab === i ? 'border-coral text-coral' : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}>
             {t}
@@ -255,7 +255,7 @@ export default function Dashboard() {
                   {/* Lien vers historique si missions complétées */}
                   {!req && chaletReqs.some(r => r.status === 'completed') && (
                     <button
-                      onClick={() => setTab(2)}
+                      onClick={() => setTab(3)}
                       className="w-full py-3 text-sm font-600 text-teal bg-teal/5 border border-teal/20 rounded-xl hover:bg-teal/10 transition-all mb-3"
                     >
                       📋 {chaletReqs.filter(r => r.status === 'completed').length} mission{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} complétée{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} — Voir l'historique
@@ -628,8 +628,146 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 1 : Demandes ── */}
+      {/* ── Onglet 1 : Mes chalets ── */}
       {tab === 1 && (
+        <div>
+          {/* Stats résumé */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-coral">{chalets.length}</p>
+              <p className="text-xs text-gray-400 mt-1">Chalets</p>
+            </div>
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-gray-900">{chalets.reduce((s, c) => s + (c.bedrooms || 0), 0)}</p>
+              <p className="text-xs text-gray-400 mt-1">Chambres total</p>
+            </div>
+            <div className="card text-center py-4">
+              <p className="text-2xl font-800 text-teal">{chalets.reduce((s, c) => s + (c.checklist_templates?.length || 0), 0)}</p>
+              <p className="text-xs text-gray-400 mt-1">Pièces définies</p>
+            </div>
+          </div>
+
+          {loadChalets ? (
+            <div className="text-center py-12 text-gray-300 text-4xl">⏳</div>
+          ) : chalets.length === 0 ? (
+            <div className="card text-center py-12">
+              <div className="text-4xl mb-3">🏔</div>
+              <p className="font-700 text-gray-700 mb-2">Aucun chalet</p>
+              <p className="text-sm text-gray-400 mb-5">Ajoutez votre premier chalet pour commencer.</p>
+              <Link to="/nouveau-chalet" className="btn-primary inline-block">+ Ajouter un chalet</Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {chalets.map(chalet => {
+                const rooms = chalet.checklist_templates || []
+                const hasActiveReq = myRequests.some(r => r.chalet_id === chalet.id && r.status !== 'completed')
+                const completedCount = myRequests.filter(r => r.chalet_id === chalet.id && r.status === 'completed').length
+
+                return (
+                  <div key={chalet.id} className="card">
+                    {/* En-tête */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h3 className="font-700 text-gray-900 text-lg">🏔 {chalet.name}</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {[chalet.address, chalet.city, chalet.province, chalet.postal_code].filter(Boolean).join(', ')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasActiveReq ? (
+                          <span className="pill-active">📋 Demande active</span>
+                        ) : (
+                          <span className="pill-done">Disponible</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Badges infos */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg">
+                        <Bed size={12} /> {chalet.bedrooms || '?'} chambre{(chalet.bedrooms || 0) > 1 ? 's' : ''}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg">
+                        <Bath size={12} /> {chalet.bathrooms || '?'} sdb
+                      </span>
+                      <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg">
+                        <Home size={12} /> {rooms.length} pièce{rooms.length > 1 ? 's' : ''}
+                      </span>
+                      {chalet.access_code && (
+                        <span className="flex items-center gap-1 text-xs bg-green-50 text-green-600 border border-green-200 px-2.5 py-1.5 rounded-lg">
+                          <Lock size={12} /> Accès configuré
+                        </span>
+                      )}
+                      {completedCount > 0 && (
+                        <span className="flex items-center gap-1 text-xs bg-teal/10 text-teal border border-teal/20 px-2.5 py-1.5 rounded-lg">
+                          <CheckCircle size={12} /> {completedCount} mission{completedCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Pièces avec photos de référence */}
+                    {rooms.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-700 text-gray-400 uppercase tracking-wide mb-2">Pièces & photos de référence</p>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                          {rooms.sort((a, b) => a.position - b.position).map(room => (
+                            <div key={room.id} className="text-center">
+                              {room.reference_photo_url ? (
+                                <img
+                                  src={room.reference_photo_url}
+                                  alt={room.room_name}
+                                  onClick={() => window.open(room.reference_photo_url, '_blank')}
+                                  className="w-full h-16 object-cover rounded-lg border border-teal/30 cursor-pointer hover:border-teal hover:shadow-sm transition-all"
+                                />
+                              ) : (
+                                <div className="w-full h-16 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center">
+                                  <Camera size={16} className="text-gray-300" />
+                                </div>
+                              )}
+                              <p className="text-[10px] font-600 text-gray-500 mt-1 truncate">{room.room_name}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {rooms.length === 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 mb-4">
+                        ⚠️ Aucune pièce définie — modifiez ce chalet pour ajouter la checklist.
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <Link to={`/chalet/${chalet.id}/editer`}
+                        className="btn-secondary text-xs flex items-center gap-1.5">
+                        ✏️ Modifier
+                      </Link>
+                      {!hasActiveReq && (
+                        <button onClick={() => { navigate('/nouvelle-demande') }}
+                          className="btn-primary text-xs flex items-center gap-1.5">
+                          <Plus size={12} /> Créer une demande
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Bouton ajouter un chalet */}
+          {chalets.length > 0 && (
+            <Link to="/nouveau-chalet"
+              className="mt-5 w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-700 text-gray-400 hover:border-coral hover:text-coral transition-all flex items-center justify-center gap-2">
+              <Plus size={16} /> Ajouter un chalet
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet 2 : Demandes ── */}
+      {tab === 2 && (
         <div>
           {loadReqs ? (
             <div className="text-center py-12 text-gray-300 text-4xl">⏳</div>
@@ -873,8 +1011,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 2 : Historique ── */}
-      {tab === 2 && (
+      {/* ── Onglet 3 : Historique ── */}
+      {tab === 3 && (
         <div>
           {/* Stats résumé */}
           <div className="grid grid-cols-3 gap-3 mb-6">
@@ -1078,8 +1216,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 3 : Accès ── */}
-      {tab === 3 && (
+      {/* ── Onglet 4 : Accès ── */}
+      {tab === 4 && (
         <div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm text-blue-700">
             🔒 <strong>Envoi automatique et sécurisé</strong> — Les détails d'accès sont transmis uniquement au professionnel accepté, dès l'acceptation de son offre.
@@ -1183,8 +1321,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 4 : Paiement ── */}
-      {tab === 4 && (
+      {/* ── Onglet 5 : Paiement ── */}
+      {tab === 5 && (
         <div>
           <div className="card mb-4">
             <h3 className="font-700 text-gray-900 mb-4">💳 Méthode de paiement</h3>
