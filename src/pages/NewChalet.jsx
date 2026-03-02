@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useChalets } from '../hooks/useChalets'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
+import { Camera } from 'lucide-react'
 import { PROVINCES, isValidPostalCode } from '../lib/constants'
 import { geocodeAddress } from '../lib/geocode'
 
@@ -12,7 +13,7 @@ const DEFAULT_ROOMS = [
 ]
 
 export default function NewChalet() {
-  const { createChalet, saveChecklistTemplate } = useChalets()
+  const { createChalet, saveChecklistTemplate, uploadReferencePhoto } = useChalets()
   const { toasts, toast } = useToast()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
@@ -35,18 +36,29 @@ export default function NewChalet() {
   const [wifiPassword, setWifiPassword] = useState('')
   const [specialNotes, setSpecialNotes] = useState('')
 
-  // Checklist
-  const [rooms, setRooms] = useState(DEFAULT_ROOMS)
+  // Checklist — chaque pièce = { name, photoUrl, file }
+  const [rooms, setRooms] = useState(DEFAULT_ROOMS.map(r => ({ name: r, photoUrl: null, file: null })))
   const [newRoom, setNewRoom] = useState('')
 
   function addRoom() {
     if (!newRoom.trim()) return
-    setRooms(r => [...r, newRoom.trim()])
+    setRooms(r => [...r, { name: newRoom.trim(), photoUrl: null, file: null }])
     setNewRoom('')
   }
 
   function removeRoom(i) {
     setRooms(r => r.filter((_, idx) => idx !== i))
+  }
+
+  function handleRoomPhoto(i, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const preview = URL.createObjectURL(file)
+    setRooms(r => r.map((room, idx) => idx === i ? { ...room, file, photoUrl: preview } : room))
+  }
+
+  function removeRoomPhoto(i) {
+    setRooms(r => r.map((room, idx) => idx === i ? { ...room, file: null, photoUrl: null } : room))
   }
 
   function validateStep1() {
@@ -80,7 +92,19 @@ export default function NewChalet() {
         wifi_password:  wifiPassword,
         special_notes:  specialNotes,
       })
-      await saveChecklistTemplate(chalet.id, rooms)
+
+      // Upload les photos de référence en parallèle
+      const roomsWithUrls = await Promise.all(
+        rooms.map(async (room) => {
+          if (room.file) {
+            const url = await uploadReferencePhoto(chalet.id, room.file)
+            return { name: room.name, photoUrl: url }
+          }
+          return { name: room.name, photoUrl: null }
+        })
+      )
+
+      await saveChecklistTemplate(chalet.id, roomsWithUrls)
       toast('🎉 Chalet ajouté avec succès !', 'success')
       setTimeout(() => navigate('/dashboard'), 1200)
     } catch (err) {
@@ -220,15 +244,29 @@ export default function NewChalet() {
 
           <div className="space-y-2 mb-4">
             {rooms.map((room, i) => (
-              <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center text-xs font-700 text-teal">
-                    {i+1}
+              <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center text-xs font-700 text-teal">
+                      {i+1}
+                    </div>
+                    <span className="text-sm font-600 text-gray-700">{room.name}</span>
                   </div>
-                  <span className="text-sm font-600 text-gray-700">{room}</span>
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer text-xs font-600 text-teal bg-teal/10 px-2.5 py-1.5 rounded-lg hover:bg-teal/20 transition-all flex items-center gap-1">
+                      <Camera size={12} /> {room.photoUrl ? 'Changer' : 'Photo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => handleRoomPhoto(i, e)} />
+                    </label>
+                    <button onClick={() => removeRoom(i)}
+                      className="text-gray-300 hover:text-coral text-lg font-700 transition-colors">×</button>
+                  </div>
                 </div>
-                <button onClick={() => removeRoom(i)}
-                  className="text-gray-300 hover:text-coral text-lg font-700 transition-colors">×</button>
+                {room.photoUrl && (
+                  <div className="flex items-center gap-3 mt-2 ml-9">
+                    <img src={room.photoUrl} alt={room.name} className="w-16 h-12 object-cover rounded-lg border border-teal/30" />
+                    <button onClick={() => removeRoomPhoto(i)} className="text-xs text-gray-400 hover:text-coral transition-colors">✕ Retirer</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

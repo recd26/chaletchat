@@ -53,14 +53,30 @@ export function useChalets() {
     return data
   }
 
+  async function uploadReferencePhoto(chaletId, file) {
+    const ext = file.name?.split('.').pop() || 'jpg'
+    const path = `chalets/${chaletId}/ref-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('cleaning-photos')
+      .upload(path, file, { upsert: true })
+    if (upErr) throw new Error(`Storage: ${upErr.message}`)
+    const { data: { publicUrl } } = supabase.storage
+      .from('cleaning-photos')
+      .getPublicUrl(path)
+    return publicUrl
+  }
+
   async function saveChecklistTemplate(chaletId, rooms) {
-    // Supprime les anciennes tâches et recrée
+    // rooms = [{ name: string, photoUrl: string | null }] ou string[]
     await supabase.from('checklist_templates').delete().eq('chalet_id', chaletId)
-    const rows = rooms.map((room, i) => ({ chalet_id: chaletId, room_name: room, position: i }))
+    const rows = rooms.map((room, i) => {
+      if (typeof room === 'string') return { chalet_id: chaletId, room_name: room, position: i }
+      return { chalet_id: chaletId, room_name: room.name, reference_photo_url: room.photoUrl || null, position: i }
+    })
     const { error } = await supabase.from('checklist_templates').insert(rows)
     if (error) throw error
     await fetchChalets()
   }
 
-  return { chalets, loading, error, createChalet, updateChalet, saveChecklistTemplate, refetch: fetchChalets }
+  return { chalets, loading, error, createChalet, updateChalet, saveChecklistTemplate, uploadReferencePhoto, refetch: fetchChalets }
 }

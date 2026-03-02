@@ -386,6 +386,21 @@ export default function ProDashboard() {
                                     {isDone && <CheckCircle size={20} className="text-teal flex-shrink-0" />}
                                   </div>
 
+                                  {/* Photo de référence du proprio */}
+                                  {template.reference_photo_url && (
+                                    <div className="px-4 pb-2">
+                                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                                        <img
+                                          src={template.reference_photo_url}
+                                          alt={`Réf: ${template.room_name}`}
+                                          onClick={() => window.open(template.reference_photo_url, '_blank')}
+                                          className="w-12 h-12 object-cover rounded-md border border-blue-300 cursor-pointer hover:opacity-80 flex-shrink-0"
+                                        />
+                                        <p className="text-[10px] text-blue-600 font-600">📌 Photo de référence — cliquez pour agrandir</p>
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {/* Zone photo */}
                                   <div className="px-4 pb-3">
                                     {isDone ? (
@@ -630,13 +645,27 @@ export default function ProDashboard() {
                       </div>
                     )}
 
-                    {/* Checklist des pièces */}
+                    {/* Checklist des pièces avec photos de référence */}
                     {req.chalet?.checklist_templates?.length > 0 && (
                       <div>
-                        <p className="text-xs font-700 text-gray-400 mb-1.5">🏠 Pièces à nettoyer ({req.chalet.checklist_templates.length}) :</p>
-                        <div className="flex flex-wrap gap-1.5">
+                        <p className="text-xs font-700 text-gray-400 mb-2">🏠 Pièces à nettoyer ({req.chalet.checklist_templates.length}) :</p>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {req.chalet.checklist_templates.sort((a, b) => a.position - b.position).map(t => (
-                            <span key={t.id} className="text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-1 rounded-lg">{t.room_name}</span>
+                            <div key={t.id} className="text-center">
+                              {t.reference_photo_url ? (
+                                <img
+                                  src={t.reference_photo_url}
+                                  alt={t.room_name}
+                                  onClick={() => window.open(t.reference_photo_url, '_blank')}
+                                  className="w-full h-14 object-cover rounded-lg border border-teal/30 cursor-pointer hover:border-teal hover:shadow-sm transition-all"
+                                />
+                              ) : (
+                                <div className="w-full h-14 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center">
+                                  <Camera size={16} className="text-gray-300" />
+                                </div>
+                              )}
+                              <p className="text-[10px] font-600 text-gray-500 mt-1 truncate">{t.room_name}</p>
+                            </div>
                           ))}
                         </div>
                       </div>

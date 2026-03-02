@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useChalets } from '../hooks/useChalets'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
+import { Camera } from 'lucide-react'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress } from '../lib/geocode'
 
@@ -10,7 +11,7 @@ const TABS = ['📋 Infos', '🔑 Accès', '✅ Checklist']
 
 export default function EditChalet() {
   const { id } = useParams()
-  const { chalets, updateChalet, saveChecklistTemplate } = useChalets()
+  const { chalets, updateChalet, saveChecklistTemplate, uploadReferencePhoto } = useChalets()
   const { toasts, toast } = useToast()
   const navigate = useNavigate()
   const [tab, setTab] = useState(0)
@@ -35,7 +36,7 @@ export default function EditChalet() {
   const [wifiPassword, setWifiPassword] = useState('')
   const [specialNotes, setSpecialNotes] = useState('')
 
-  // Checklist
+  // Checklist — chaque pièce = { name, photoUrl, file }
   const [rooms,   setRooms]   = useState([])
   const [newRoom, setNewRoom] = useState('')
 
@@ -54,13 +55,24 @@ export default function EditChalet() {
     setWifiName(chalet.wifi_name || '')
     setWifiPassword(chalet.wifi_password || '')
     setSpecialNotes(chalet.special_notes || '')
-    setRooms(chalet.checklist_templates?.map(t => t.room_name) || [])
+    setRooms(chalet.checklist_templates?.map(t => ({ name: t.room_name, photoUrl: t.reference_photo_url || null, file: null })) || [])
   }, [chalet])
 
   function addRoom() {
     if (!newRoom.trim()) return
-    setRooms(r => [...r, newRoom.trim()])
+    setRooms(r => [...r, { name: newRoom.trim(), photoUrl: null, file: null }])
     setNewRoom('')
+  }
+
+  function handleRoomPhoto(i, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const preview = URL.createObjectURL(file)
+    setRooms(r => r.map((room, idx) => idx === i ? { ...room, file, photoUrl: preview } : room))
+  }
+
+  function removeRoomPhoto(i) {
+    setRooms(r => r.map((room, idx) => idx === i ? { ...room, file: null, photoUrl: null } : room))
   }
 
   async function saveInfos() {
@@ -94,7 +106,17 @@ export default function EditChalet() {
     if (rooms.length === 0) return toast('⚠️ Ajoutez au moins une pièce', 'error')
     setBusy(true)
     try {
-      await saveChecklistTemplate(id, rooms)
+      // Upload les nouvelles photos
+      const roomsWithUrls = await Promise.all(
+        rooms.map(async (room) => {
+          if (room.file) {
+            const url = await uploadReferencePhoto(id, room.file)
+            return { name: room.name, photoUrl: url }
+          }
+          return { name: room.name, photoUrl: room.photoUrl }
+        })
+      )
+      await saveChecklistTemplate(id, roomsWithUrls)
       toast('✅ Checklist sauvegardée !', 'success')
     } catch (err) { toast(`❌ ${err.message}`, 'error') }
     finally { setBusy(false) }
@@ -218,13 +240,27 @@ export default function EditChalet() {
           <p className="text-sm text-gray-400 mb-5">Le professionnel devra cocher chaque pièce avec une photo obligatoire.</p>
           <div className="space-y-2 mb-4">
             {rooms.map((room, i) => (
-              <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center text-xs font-700 text-teal">{i+1}</div>
-                  <span className="text-sm font-600 text-gray-700">{room}</span>
+              <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center text-xs font-700 text-teal">{i+1}</div>
+                    <span className="text-sm font-600 text-gray-700">{room.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer text-xs font-600 text-teal bg-teal/10 px-2.5 py-1.5 rounded-lg hover:bg-teal/20 transition-all flex items-center gap-1">
+                      <Camera size={12} /> {room.photoUrl ? 'Changer' : 'Photo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => handleRoomPhoto(i, e)} />
+                    </label>
+                    <button onClick={() => setRooms(r => r.filter((_, idx) => idx !== i))}
+                      className="text-gray-300 hover:text-coral text-lg font-700">×</button>
+                  </div>
                 </div>
-                <button onClick={() => setRooms(r => r.filter((_, idx) => idx !== i))}
-                  className="text-gray-300 hover:text-coral text-lg font-700">×</button>
+                {room.photoUrl && (
+                  <div className="flex items-center gap-3 mt-2 ml-9">
+                    <img src={room.photoUrl} alt={room.name} className="w-16 h-12 object-cover rounded-lg border border-teal/30" />
+                    <button onClick={() => removeRoomPhoto(i)} className="text-xs text-gray-400 hover:text-coral transition-colors">✕ Retirer</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

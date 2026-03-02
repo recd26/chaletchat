@@ -68,9 +68,10 @@ create table public.chalets (
 create table public.checklist_templates (
   id         uuid default uuid_generate_v4() primary key,
   chalet_id  uuid references public.chalets(id) on delete cascade not null,
-  room_name  text not null,
-  position   int not null default 0,
-  created_at timestamptz default now()
+  room_name            text not null,
+  reference_photo_url  text,
+  position             int not null default 0,
+  created_at           timestamptz default now()
 );
 
 -- ─── DEMANDES DE MÉNAGE ──────────────────────────────────────
@@ -508,5 +509,9 @@ END $$;
 -- Migration: ajouter budget suggéré aux demandes
 ALTER TABLE public.cleaning_requests
   ADD COLUMN IF NOT EXISTS suggested_budget numeric(10,2);
+
+-- Migration: ajouter photo de référence aux pièces
+ALTER TABLE public.checklist_templates
+  ADD COLUMN IF NOT EXISTS reference_photo_url text;
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
