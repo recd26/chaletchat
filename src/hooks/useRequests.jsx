@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import { haversineDistance } from '../lib/geocode'
 import { sendNotification, notifyNearbyPros, notifyCleaningCompleted } from '../lib/notifications'
+import { compressImage } from '../lib/imageUtils'
 
 export function useRequests() {
   const { user, profile } = useAuth()
@@ -41,11 +42,17 @@ export function useRequests() {
       let query = supabase
         .from('cleaning_requests')
         .select(`
-          *,
-          chalet:chalets(*, checklist_templates(*)),
-          offers(*,pro:profiles(*)),
-          checklist_completions(*),
-          reviews(*)
+          id, status, owner_id, assigned_pro_id, chalet_id, scheduled_date, scheduled_time,
+          deadline_time, estimated_hours, is_urgent, special_notes, agreed_price, suggested_budget,
+          access_sent_at, created_at, updated_at,
+          chalet:chalets(id, name, address, city, bedrooms, bathrooms, lat, lng,
+            access_code, key_box, parking_info, wifi_name, wifi_password, special_notes,
+            checklist_templates(id, room_name, reference_photo_url, position)),
+          offers(id, request_id, pro_id, price, message, status, created_at,
+            pro:profiles(id, first_name, last_name, avatar_url, city, province, lat, lng,
+              radius_km, languages, selfie_url, id_card_url, verified)),
+          checklist_completions(id, request_id, template_id, is_done, photo_url, completed_at),
+          reviews(id, request_id, reviewer_id, reviewee_id, rating, comment, created_at)
         `)
         .order('scheduled_date', { ascending: true })
 
@@ -57,11 +64,6 @@ export function useRequests() {
 
       const { data, error } = await query
       if (error) throw error
-      // Debug: vérifier si les offres sont chargées
-      if (data?.length > 0) {
-        const withOffers = data.filter(r => r.offers?.length > 0)
-        console.log(`[useRequests] ${data.length} demandes, ${withOffers.length} avec offres`, withOffers.map(r => ({ id: r.id, status: r.status, offers: r.offers?.length })))
-      }
       setRequests(data)
     } catch (err) {
       console.error(err)
@@ -178,10 +180,11 @@ export function useRequests() {
   }
 
   async function uploadRoomPhoto(requestId, templateId, file) {
+    const compressed = await compressImage(file, 1200, 0.7)
     const path = `${requestId}/${templateId}-${Date.now()}.jpg`
     const { error: upErr } = await supabase.storage
       .from('cleaning-photos')
-      .upload(path, file, { upsert: true })
+      .upload(path, compressed, { upsert: true })
     if (upErr) throw new Error(`Storage: ${upErr.message}`)
 
     const { data: { publicUrl } } = supabase.storage

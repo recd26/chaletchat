@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Upload, CheckCircle } from 'lucide-react'
 
 export default function UploadBox({ icon, title, subtitle, onFile, teal = false }) {
@@ -6,9 +6,16 @@ export default function UploadBox({ icon, title, subtitle, onFile, teal = false 
   const [preview,  setPreview]  = useState(null)
   const inputRef = useRef()
 
+  // Libérer les Object URLs pour éviter les fuites mémoire
+  useEffect(() => {
+    return () => { if (preview) URL.revokeObjectURL(preview) }
+  }, [preview])
+
   function handleChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    // Révoquer l'ancien preview avant d'en créer un nouveau
+    if (preview) URL.revokeObjectURL(preview)
     setUploaded(true)
     setPreview(URL.createObjectURL(file))
     onFile?.(file)

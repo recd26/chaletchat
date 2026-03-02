@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useChalets } from '../hooks/useChalets'
@@ -119,8 +119,8 @@ export default function Dashboard() {
 
   // requests is already filtered by owner_id in useRequests hook — no extra filter needed
   const myRequests = requests
-  const completedRequests = myRequests.filter(r => r.status === 'completed')
-  const totalSpent = completedRequests.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0)
+  const completedRequests = useMemo(() => myRequests.filter(r => r.status === 'completed'), [myRequests])
+  const totalSpent = useMemo(() => completedRequests.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0), [completedRequests])
 
   function startEditRequest(req) {
     setEditingRequest(req.id)

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
+import { compressImage } from '../lib/imageUtils'
 
 export function useChalets() {
   const { user } = useAuth()
@@ -54,11 +55,11 @@ export function useChalets() {
   }
 
   async function uploadReferencePhoto(chaletId, file) {
-    const ext = file.name?.split('.').pop() || 'jpg'
-    const path = `chalets/${chaletId}/ref-${Date.now()}.${ext}`
+    const compressed = await compressImage(file, 800, 0.7)
+    const path = `chalets/${chaletId}/ref-${Date.now()}.jpg`
     const { error: upErr } = await supabase.storage
       .from('cleaning-photos')
-      .upload(path, file, { upsert: true })
+      .upload(path, compressed, { upsert: true })
     if (upErr) throw new Error(`Storage: ${upErr.message}`)
     const { data: { publicUrl } } = supabase.storage
       .from('cleaning-photos')

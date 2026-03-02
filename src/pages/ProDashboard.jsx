@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
@@ -105,20 +105,20 @@ export default function ProDashboard() {
   }
 
   // Demandes ouvertes filtrées par rayon
-  const openReqs = getOpenRequestsNearby(profile)
+  const openReqs = useMemo(() => getOpenRequestsNearby(profile), [requests, profile])
   // Mes missions en cours
-  const myActive = requests.filter(r =>
+  const myActive = useMemo(() => requests.filter(r =>
     r.assigned_pro_id === profile?.id && ['confirmed','in_progress'].includes(r.status)
-  )
+  ), [requests, profile])
   // Mes missions complétées
-  const myCompleted = requests.filter(r =>
+  const myCompleted = useMemo(() => requests.filter(r =>
     r.assigned_pro_id === profile?.id && r.status === 'completed'
-  )
-  const totalEarned = myCompleted.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0)
-  const myReviews = myCompleted.flatMap(r => r.reviews || []).filter(r => r.reviewee_id === profile?.id)
-  const avgRating = myReviews.length > 0
+  ), [requests, profile])
+  const totalEarned = useMemo(() => myCompleted.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0), [myCompleted])
+  const myReviews = useMemo(() => myCompleted.flatMap(r => r.reviews || []).filter(r => r.reviewee_id === profile?.id), [myCompleted, profile])
+  const avgRating = useMemo(() => myReviews.length > 0
     ? (myReviews.reduce((s, r) => s + r.rating, 0) / myReviews.length).toFixed(1)
-    : null
+    : null, [myReviews])
 
   async function handleOffer(requestId) {
     const price = parseFloat(offerPrice[requestId])
