@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bell, Check, MessageSquare, DollarSign, CheckCircle, XCircle, MapPin, Sparkles } from 'lucide-react'
 import { useNotifications } from '../hooks/useNotifications'
+import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
 import Toast from './Toast'
 
@@ -13,9 +15,22 @@ const ICON_MAP = {
   cleaning_completed:  { icon: Sparkles,     color: 'text-green-500' },
 }
 
+// Navigation : type → { path, tab }
+const NAV_MAP = {
+  // Proprio reçoit
+  new_offer:          { path: '/dashboard', tab: 1 },   // Demandes
+  cleaning_completed: { path: '/dashboard', tab: 2 },   // Historique
+  // Pro reçoit
+  new_request_nearby: { path: '/pro', tab: 0 },         // Demandes à proximité
+  offer_accepted:     { path: '/pro', tab: 0 },
+  offer_declined:     { path: '/pro', tab: 0 },
+}
+
 export default function NotificationBell() {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
+  const { profile } = useAuth()
   const { toasts, toast } = useToast()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef()
   const prevLenRef = useRef(notifications.length)
@@ -52,6 +67,17 @@ export default function NotificationBell() {
 
   function handleClickNotif(notif) {
     if (!notif.is_read) markAsRead(notif.id)
+
+    // Navigation vers la demande
+    const requestId = notif.data?.request_id
+    const nav = NAV_MAP[notif.type]
+    if (nav) {
+      const params = new URLSearchParams()
+      params.set('tab', nav.tab)
+      if (requestId) params.set('request', requestId)
+      navigate(`${nav.path}?${params.toString()}`)
+      setOpen(false)
+    }
   }
 
   return (

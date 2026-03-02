@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useChalets } from '../hooks/useChalets'
 import { useRequests } from '../hooks/useRequests'
@@ -18,7 +18,27 @@ export default function Dashboard() {
   const { requests, loading: loadReqs, acceptOffer, submitReview, completeRequest, updateRequest } = useRequests()
   const { toasts, toast } = useToast()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState(0)
+  const [highlightRequest, setHighlightRequest] = useState(null)
+
+  // Lire les search params pour navigation depuis les notifications
+  useEffect(() => {
+    const paramTab = searchParams.get('tab')
+    const paramReq = searchParams.get('request')
+    if (paramTab !== null) setTab(parseInt(paramTab, 10))
+    if (paramReq) {
+      setHighlightRequest(paramReq)
+      setOpenRequest(paramReq)
+      // Scroll vers la demande après rendu
+      setTimeout(() => {
+        document.getElementById(`request-${paramReq}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 500)
+      setTimeout(() => setHighlightRequest(null), 5000)
+    }
+    // Nettoyer l'URL
+    if (paramTab || paramReq) setSearchParams({}, { replace: true })
+  }, [])
   const [showCode, setShowCode] = useState({})
   const [chatRequest, setChatRequest] = useState(null)
   const [savedCard, setSavedCard] = useState(
@@ -651,7 +671,7 @@ export default function Dashboard() {
                       const acceptedPro = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
 
                       return (
-                        <div key={req.id} className={`card border ${req.status === 'confirmed' ? 'border-green-200' : 'border-coral/30'}`}>
+                        <div key={req.id} id={`request-${req.id}`} className={`card border ${req.status === 'confirmed' ? 'border-green-200' : 'border-coral/30'} ${highlightRequest === req.id ? 'ring-2 ring-coral ring-offset-2' : ''}`}>
                           {/* En-tête */}
                           <div className="flex justify-between items-start mb-3">
                             <div>

@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
@@ -18,8 +19,25 @@ export default function ProDashboard() {
   const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, completeRequest, submitReview, updateOffer } = useRequests()
   const { toasts, toast } = useToast()
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab,        setTab]        = useState(0)
   const [viewMode,   setViewMode]   = useState('list') // 'list' or 'map'
+  const [highlightRequest, setHighlightRequest] = useState(null)
+
+  // Lire les search params pour navigation depuis les notifications
+  useEffect(() => {
+    const paramTab = searchParams.get('tab')
+    const paramReq = searchParams.get('request')
+    if (paramTab !== null) setTab(parseInt(paramTab, 10))
+    if (paramReq) {
+      setHighlightRequest(paramReq)
+      setTimeout(() => {
+        document.getElementById(`request-${paramReq}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 500)
+      setTimeout(() => setHighlightRequest(null), 5000)
+    }
+    if (paramTab || paramReq) setSearchParams({}, { replace: true })
+  }, [])
   const [offerPrice, setOfferPrice] = useState({})
   const [offerMsg,   setOfferMsg]   = useState({})
   const [uploading,  setUploading]  = useState({})
@@ -477,7 +495,7 @@ export default function ProDashboard() {
             </div>
           ) : viewMode === 'list' ? (
             openReqs.map(req => (
-              <div key={req.id} id={`request-${req.id}`} className="card mb-4 hover:border-teal transition-all">
+              <div key={req.id} id={`request-${req.id}`} className={`card mb-4 hover:border-teal transition-all ${highlightRequest === req.id ? 'ring-2 ring-teal ring-offset-2' : ''}`}>
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
