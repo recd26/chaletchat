@@ -12,7 +12,7 @@ import { geocodeAddress } from '../lib/geocode'
 
 // ── Étapes selon le rôle ────────────────────────────────────
 const STEPS_PROPRIO = ['Compte', 'Profil']
-const STEPS_PRO     = ['Compte', 'Profil', 'Identité', 'Bancaire']
+const STEPS_PRO     = ['Compte', 'Profil', 'Identité']
 
 export default function Register() {
   const { signUp } = useAuth()
@@ -54,13 +54,6 @@ export default function Register() {
   const [selfieFile,  setSelfieFile]  = useState(null)
   const [idFile,      setIdFile]      = useState(null)
 
-  // Banque
-  const [bankName,    setBankName]    = useState('')
-  const [bankInst,    setBankInst]    = useState('')
-  const [transit,     setTransit]     = useState('')
-  const [institution, setInstitution] = useState('')
-  const [account,     setAccount]     = useState('')
-
   const steps      = role === 'proprio' ? STEPS_PROPRIO : STEPS_PRO
   const isTeal     = role === 'pro'
   const totalSteps = steps.length
@@ -87,12 +80,6 @@ export default function Register() {
     }
     if (step === 3 && role === 'pro') {
       // Upload optionnel pour l'instant — on peut compléter plus tard
-      return true
-    }
-    if (step === 4 && role === 'pro') {
-      if (!bankName)    return toast('⚠️ Nom du titulaire requis', 'error')
-      if (!transit)     return toast('⚠️ Numéro de transit requis', 'error')
-      if (!account)     return toast('⚠️ Numéro de compte requis', 'error')
       return true
     }
     return true
@@ -161,11 +148,6 @@ export default function Register() {
           experience,
           languages,
           bio,
-          bank_name: bankName,
-          bank_institution: bankInst,
-          bank_transit: transit,
-          bank_institution_num: institution,
-          bank_account: account,
           ...(selfieUrl && { selfie_url: selfieUrl }),
           ...(idCardUrl && { id_card_url: idCardUrl }),
           ...(selfieUrl && idCardUrl && { verif_status: 'pending' }),
@@ -369,35 +351,6 @@ export default function Register() {
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
               🔐 Chiffrement AES-256 — réponse sous 24h par courriel.
-            </div>
-          </div>
-        )}
-
-        {/* ──────── STEP 4 PRO : Bancaire ──────── */}
-        {step === 4 && role === 'pro' && (
-          <div>
-            <h2 className="text-xl font-800 text-gray-900 mb-1">Informations bancaires 💸</h2>
-            <p className="text-sm text-gray-400 mb-6">Pour recevoir vos paiements automatiquement après chaque ménage complété.</p>
-
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Nom du titulaire</label>
-              <input className="input-field-teal" placeholder="Marie Lapointe" value={bankName} onChange={e=>setBankName(e.target.value)} /></div>
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Institution bancaire</label>
-              <select className="input-field-teal" value={bankInst} onChange={e=>setBankInst(e.target.value)}>
-                <option value="">Sélectionnez...</option>
-                <option>Desjardins</option><option>Banque Nationale</option><option>TD</option>
-                <option>RBC</option><option>BMO</option><option>Scotiabank</option><option>Autre</option>
-              </select></div>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Transit (5 chiffres)</label>
-                <input className="input-field-teal" placeholder="12345" maxLength={5} value={transit} onChange={e=>setTransit(e.target.value.replace(/\D/g,''))} /></div>
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Institution (3 chiffres)</label>
-                <input className="input-field-teal" placeholder="815" maxLength={3} value={institution} onChange={e=>setInstitution(e.target.value.replace(/\D/g,''))} /></div>
-            </div>
-            <div className="mb-4"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Numéro de compte</label>
-              <input className="input-field-teal" placeholder="0012345678" maxLength={12} value={account} onChange={e=>setAccount(e.target.value.replace(/\D/g,''))} /></div>
-
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700 mb-2">
-              ⚡ Paiements versés dans les <strong>2h</strong> suivant la complétion de la checklist avec photos.
             </div>
           </div>
         )}

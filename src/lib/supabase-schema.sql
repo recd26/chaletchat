@@ -33,6 +33,11 @@ create table public.profiles (
   selfie_url       text,
   id_card_url      text,
   verif_status     text default 'pending' check (verif_status in ('pending','submitted','approved','rejected')),
+  -- Informations bancaires PRO (ajoutées après inscription)
+  bank_name          text,   -- nom du titulaire
+  bank_institution   text,   -- nom de la banque (Desjardins, TD, etc.)
+  bank_transit       text,   -- numéro de transit (5 chiffres)
+  bank_account       text,   -- numéro de compte
   -- Stripe
   stripe_customer_id text,
   stripe_account_id  text,   -- pour les pros (Connect)

@@ -63,6 +63,10 @@ export default function ProDashboard() {
   const [editOfferMsg, setEditOfferMsg] = useState('')
   const [savingOffer, setSavingOffer] = useState(false)
   const [expandedReq, setExpandedReq] = useState(null)
+  // Bancaire
+  const [editingBank, setEditingBank] = useState(false)
+  const [bankForm, setBankForm] = useState({})
+  const [savingBank, setSavingBank] = useState(false)
 
   // Helpers pour les cartes de demande
   function isAutoUrgent(req) {
@@ -121,6 +125,12 @@ export default function ProDashboard() {
     : null, [myReviews])
 
   async function handleOffer(requestId) {
+    // Vérifier que le pro a configuré ses infos bancaires
+    if (!profile?.bank_name) {
+      toast('💳 Ajoutez vos informations bancaires avant de soumettre une offre', 'info')
+      setTab(1) // Aller à l'onglet Profil
+      return
+    }
     const price = parseFloat(offerPrice[requestId])
     if (!price || price <= 0) return toast('⚠️ Entrez un prix valide', 'error')
     try {
@@ -780,12 +790,15 @@ export default function ProDashboard() {
         <div>
           {/* Étapes */}
           <div className="flex gap-2 mb-5 flex-wrap">
-            {['✅ Infos personnelles','✅ Zone de travail','📸 Vérification identité','💳 Infos bancaires'].map((s,i) => (
+            {[
+              { label: 'Infos personnelles', done: true },
+              { label: 'Zone de travail', done: true },
+              { label: 'Vérification identité', done: profile?.verif_status === 'approved' },
+              { label: 'Infos bancaires', done: !!profile?.bank_name },
+            ].map((s,i) => (
               <span key={i} className={`text-xs font-700 px-3 py-1.5 rounded-full border ${
-                s.startsWith('✅') ? 'border-teal text-teal bg-teal/5' :
-                s.startsWith('📸') ? 'border-coral text-coral bg-coral/5' :
-                'border-gray-200 text-gray-400'
-              }`}>{s}</span>
+                s.done ? 'border-teal text-teal bg-teal/5' : 'border-amber-300 text-amber-600 bg-amber-50'
+              }`}>{s.done ? '✅' : '⚠️'} {s.label}</span>
             ))}
           </div>
 
@@ -975,6 +988,98 @@ export default function ProDashboard() {
                 setEditPostal(profile?.postal_code || '')
                 setEditingProfile(true)
               }} className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier le profil</button>
+            )}
+          </div>
+
+          {/* Informations bancaires */}
+          <div className="card mt-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-700 text-gray-900">💳 Informations bancaires</h3>
+              {profile?.bank_name ? (
+                <span className="pill-active">✅ Configuré</span>
+              ) : (
+                <span className="text-xs font-700 px-3 py-1 rounded-full border border-amber-300 text-amber-600 bg-amber-50">⚠️ Requis pour soumettre des offres</span>
+              )}
+            </div>
+
+            {profile?.bank_name && !editingBank ? (
+              <>
+                {[
+                  { icon: '👤', label: 'Titulaire', val: profile.bank_name },
+                  { icon: '🏦', label: 'Institution', val: profile.bank_institution || '—' },
+                  { icon: '🔢', label: 'Transit', val: profile.bank_transit ? '•••' + profile.bank_transit.slice(-2) : '—' },
+                  { icon: '💰', label: 'Compte', val: profile.bank_account ? '••••••' + profile.bank_account.slice(-4) : '—' },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100 mb-2">
+                    <span>{row.icon}</span>
+                    <span className="text-xs font-700 text-gray-400 w-24 flex-shrink-0">{row.label}</span>
+                    <span className="text-sm font-600 text-gray-800">{row.val}</span>
+                  </div>
+                ))}
+                <button onClick={() => {
+                  setEditingBank(true)
+                  setBankForm({
+                    bank_name: profile.bank_name || '',
+                    bank_institution: profile.bank_institution || '',
+                    bank_transit: profile.bank_transit || '',
+                    bank_account: profile.bank_account || '',
+                  })
+                }} className="btn-secondary text-xs mt-3 inline-block">✏️ Modifier</button>
+              </>
+            ) : (
+              <div className={profile?.bank_name ? '' : 'mt-0'}>
+                {!profile?.bank_name && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 mb-4">
+                    💡 Ajoutez vos informations bancaires pour pouvoir soumettre des offres et recevoir vos paiements.
+                  </div>
+                )}
+                <div className="mb-3">
+                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Nom du titulaire</label>
+                  <input className="input-field-teal" placeholder="Marie Lapointe"
+                    value={bankForm.bank_name || ''} onChange={e => setBankForm(f => ({ ...f, bank_name: e.target.value }))} />
+                </div>
+                <div className="mb-3">
+                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Institution bancaire</label>
+                  <select className="input-field-teal" value={bankForm.bank_institution || ''} onChange={e => setBankForm(f => ({ ...f, bank_institution: e.target.value }))}>
+                    <option value="">Sélectionnez...</option>
+                    <option>Desjardins</option><option>Banque Nationale</option><option>TD</option>
+                    <option>RBC</option><option>BMO</option><option>Scotiabank</option><option>Autre</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Transit (5 chiffres)</label>
+                    <input className="input-field-teal" placeholder="12345" maxLength={5}
+                      value={bankForm.bank_transit || ''} onChange={e => setBankForm(f => ({ ...f, bank_transit: e.target.value.replace(/\D/g, '') }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Numéro de compte</label>
+                    <input className="input-field-teal" placeholder="0012345678" maxLength={12}
+                      value={bankForm.bank_account || ''} onChange={e => setBankForm(f => ({ ...f, bank_account: e.target.value.replace(/\D/g, '') }))} />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button disabled={savingBank} onClick={async () => {
+                    if (!bankForm.bank_name) return toast('⚠️ Nom du titulaire requis', 'error')
+                    if (!bankForm.bank_transit || bankForm.bank_transit.length < 5) return toast('⚠️ Transit requis (5 chiffres)', 'error')
+                    if (!bankForm.bank_account || bankForm.bank_account.length < 7) return toast('⚠️ Numéro de compte requis (min 7 chiffres)', 'error')
+                    setSavingBank(true)
+                    try {
+                      await updateProfile(bankForm)
+                      toast('✅ Informations bancaires enregistrées !', 'success')
+                      setEditingBank(false)
+                    } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                    finally { setSavingBank(false) }
+                  }} className="btn-teal text-xs">{savingBank ? '⏳...' : '💾 Enregistrer'}</button>
+                  {profile?.bank_name && (
+                    <button onClick={() => setEditingBank(false)} className="btn-secondary text-xs">Annuler</button>
+                  )}
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700 mt-4">
+                  🔐 Vos informations bancaires sont sécurisées et utilisées uniquement pour les virements de paiement.
+                </div>
+              </div>
             )}
           </div>
         </div>
