@@ -68,12 +68,18 @@ export default function NotificationBell() {
   function handleClickNotif(notif) {
     if (!notif.is_read) markAsRead(notif.id)
 
+    // Extraire request_id du champ data (peut être objet ou string JSON)
+    let requestId = null
+    try {
+      const d = typeof notif.data === 'string' ? JSON.parse(notif.data) : notif.data
+      requestId = d?.request_id
+    } catch {}
+
     // Navigation vers la demande
-    const requestId = notif.data?.request_id
     const nav = NAV_MAP[notif.type]
     if (nav) {
       const params = new URLSearchParams()
-      params.set('tab', nav.tab)
+      params.set('tab', String(nav.tab))
       if (requestId) params.set('request', requestId)
       navigate(`${nav.path}?${params.toString()}`)
       setOpen(false)

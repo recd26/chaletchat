@@ -26,19 +26,18 @@ export default function Dashboard() {
   useEffect(() => {
     const paramTab = searchParams.get('tab')
     const paramReq = searchParams.get('request')
+    if (paramTab === null && !paramReq) return
     if (paramTab !== null) setTab(parseInt(paramTab, 10))
     if (paramReq) {
       setHighlightRequest(paramReq)
       setOpenRequest(paramReq)
-      // Scroll vers la demande après rendu
       setTimeout(() => {
         document.getElementById(`request-${paramReq}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 500)
       setTimeout(() => setHighlightRequest(null), 5000)
     }
-    // Nettoyer l'URL
-    if (paramTab || paramReq) setSearchParams({}, { replace: true })
-  }, [])
+    setSearchParams({}, { replace: true })
+  }, [searchParams])
   const [showCode, setShowCode] = useState({})
   const [chatRequest, setChatRequest] = useState(null)
   const [savedCard, setSavedCard] = useState(

@@ -28,6 +28,7 @@ export default function ProDashboard() {
   useEffect(() => {
     const paramTab = searchParams.get('tab')
     const paramReq = searchParams.get('request')
+    if (paramTab === null && !paramReq) return
     if (paramTab !== null) setTab(parseInt(paramTab, 10))
     if (paramReq) {
       setHighlightRequest(paramReq)
@@ -36,8 +37,8 @@ export default function ProDashboard() {
       }, 500)
       setTimeout(() => setHighlightRequest(null), 5000)
     }
-    if (paramTab || paramReq) setSearchParams({}, { replace: true })
-  }, [])
+    setSearchParams({}, { replace: true })
+  }, [searchParams])
   const [offerPrice, setOfferPrice] = useState({})
   const [offerMsg,   setOfferMsg]   = useState({})
   const [uploading,  setUploading]  = useState({})
