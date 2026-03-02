@@ -10,7 +10,7 @@ import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
-const TABS = ['Mes chalets', '✅ Historique', '🔑 Accès', '💳 Paiement']
+const TABS = ['🏡 Chalets', '📋 Demandes', '✅ Historique', '🔑 Accès', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -82,7 +82,7 @@ export default function Dashboard() {
   function handleNewRequest() {
     if (!savedCard) {
       toast('💳 Ajoutez une méthode de paiement avant de créer une demande', 'info')
-      setTab(2)
+      setTab(4)
       return
     }
     navigate('/nouvelle-demande')
@@ -234,7 +234,7 @@ export default function Dashboard() {
                   {/* Lien vers historique si missions complétées */}
                   {!req && chaletReqs.some(r => r.status === 'completed') && (
                     <button
-                      onClick={() => setTab(1)}
+                      onClick={() => setTab(2)}
                       className="w-full py-3 text-sm font-600 text-teal bg-teal/5 border border-teal/20 rounded-xl hover:bg-teal/10 transition-all mb-3"
                     >
                       📋 {chaletReqs.filter(r => r.status === 'completed').length} mission{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} complétée{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} — Voir l'historique
@@ -549,11 +549,11 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      {/* Offres en attente (seulement si demande ouverte) */}
-                      {req.status === 'open' && offers.filter(o => o.status === 'pending').length > 0 && (
+                      {/* Offres reçues (demande ouverte) */}
+                      {req.status === 'open' && offers.length > 0 && (
                         <div>
-                          <p className="text-sm font-700 text-gray-800 mb-2">Offres reçues ({offers.filter(o => o.status === 'pending').length})</p>
-                          {offers.filter(o => o.status === 'pending').map(offer => (
+                          <p className="text-sm font-700 text-gray-800 mb-2">📨 Offres reçues ({offers.length})</p>
+                          {offers.map(offer => (
                             <div key={offer.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-2 hover:border-coral transition-all">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-coral-light to-amber-300 flex items-center justify-center text-lg">👩</div>
@@ -607,8 +607,251 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 1 : Historique ── */}
+      {/* ── Onglet 1 : Demandes ── */}
       {tab === 1 && (
+        <div>
+          {loadReqs ? (
+            <div className="text-center py-12 text-gray-300 text-4xl">⏳</div>
+          ) : (() => {
+            const activeReqs = myRequests.filter(r => r.status !== 'completed')
+            const openReqs = activeReqs.filter(r => r.status === 'open')
+            const confirmedReqs = activeReqs.filter(r => r.status === 'confirmed')
+            const totalOffers = openReqs.reduce((sum, r) => sum + (r.offers?.length || 0), 0)
+
+            return (
+              <div>
+                {/* Stats demandes */}
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="card text-center py-4">
+                    <p className="text-2xl font-800 text-coral">{openReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">En attente</p>
+                  </div>
+                  <div className="card text-center py-4">
+                    <p className="text-2xl font-800 text-teal">{confirmedReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">Confirmées</p>
+                  </div>
+                  <div className="card text-center py-4">
+                    <p className="text-2xl font-800 text-amber-500">{totalOffers}</p>
+                    <p className="text-xs text-gray-400 mt-1">Offres reçues</p>
+                  </div>
+                </div>
+
+                {activeReqs.length === 0 ? (
+                  <div className="card text-center py-12">
+                    <div className="text-4xl mb-3">📋</div>
+                    <p className="font-700 text-gray-700 mb-2">Aucune demande active</p>
+                    <p className="text-sm text-gray-400 mb-5">Créez une demande de ménage pour recevoir des offres.</p>
+                    <button onClick={handleNewRequest} className="btn-primary">+ Nouvelle demande</button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activeReqs.map(req => {
+                      const chalet = chalets.find(c => c.id === req.chalet_id) || req.chalet
+                      const offers = req.offers || []
+                      const acceptedPro = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
+
+                      return (
+                        <div key={req.id} className={`card border ${req.status === 'confirmed' ? 'border-green-200' : 'border-coral/30'}`}>
+                          {/* En-tête */}
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h3 className="font-700 text-gray-900">🏔 {chalet?.name || 'Chalet'}</h3>
+                              <p className="text-xs text-gray-400 mt-0.5">{chalet?.city}</p>
+                            </div>
+                            <span className={`pill-${req.status === 'open' ? 'pending' : 'active'}`}>
+                              {req.status === 'open' ? '⏳ En attente d\'offres' : '✅ Confirmé'}
+                            </span>
+                          </div>
+
+                          {/* Infos demande */}
+                          <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-500 mb-3">
+                            <span>🗓 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : '—'}</span>
+                            <span>⏰ {req.scheduled_time || '—'}</span>
+                            {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
+                            {req.is_urgent && <span className="text-coral font-700">🔥 Urgent</span>}
+                            {req.agreed_price && <span className="text-teal font-700">💰 {req.agreed_price} $</span>}
+                          </div>
+
+                          {/* Notes spéciales */}
+                          {req.special_notes && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 mb-3">
+                              📝 {req.special_notes}
+                            </div>
+                          )}
+
+                          {/* Badges produits / lavage / spa */}
+                          <div className="flex flex-wrap gap-2 mb-3 text-xs">
+                            {req.supplies_on_site?.length > 0 && (
+                              <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
+                                🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits
+                              </span>
+                            )}
+                            {req.laundry_tasks?.length > 0 && (
+                              <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
+                                🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {req.spa_tasks?.length > 0 && (
+                              <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
+                                ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Bouton modifier (demande ouverte) */}
+                          {req.status === 'open' && (
+                            <button onClick={() => startEditRequest(req)}
+                              className="text-xs font-600 text-coral hover:underline mb-3">✏️ Modifier cette demande</button>
+                          )}
+
+                          {/* Formulaire modification demande */}
+                          {editingRequest === req.id && (
+                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3">
+                              <h4 className="text-sm font-700 text-gray-700 mb-3">✏️ Modifier la demande</h4>
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Date *</label>
+                                  <input type="date" className="input-field" value={editReqForm.scheduled_date}
+                                    onChange={e => setEditReqForm(f => ({ ...f, scheduled_date: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure *</label>
+                                  <input type="time" className="input-field" value={editReqForm.scheduled_time}
+                                    onChange={e => setEditReqForm(f => ({ ...f, scheduled_time: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure limite</label>
+                                  <input type="time" className="input-field" value={editReqForm.deadline_time || ''}
+                                    onChange={e => setEditReqForm(f => ({ ...f, deadline_time: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Durée estimée</label>
+                                  <select className="input-field" value={editReqForm.estimated_hours}
+                                    onChange={e => setEditReqForm(f => ({ ...f, estimated_hours: e.target.value }))}>
+                                    {['1', '1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '7', '8'].map(h => (
+                                      <option key={h} value={h}>{h}h</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="mb-3">
+                                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Notes spéciales</label>
+                                <textarea className="input-field min-h-16 resize-none" placeholder="Instructions..."
+                                  value={editReqForm.special_notes || ''}
+                                  onChange={e => setEditReqForm(f => ({ ...f, special_notes: e.target.value }))} />
+                              </div>
+                              <label className="flex items-center gap-3 cursor-pointer mb-4">
+                                <div className={`w-11 h-6 rounded-full relative transition-colors ${editReqForm.is_urgent ? 'bg-coral' : 'bg-gray-200'}`}
+                                  onClick={() => setEditReqForm(f => ({ ...f, is_urgent: !f.is_urgent }))}>
+                                  <div className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5"
+                                    style={{ transform: editReqForm.is_urgent ? 'translateX(22px)' : 'translateX(0)' }} />
+                                </div>
+                                <span className="text-sm font-600 text-gray-700">Demande urgente</span>
+                              </label>
+                              <div className="flex gap-2">
+                                <button onClick={() => saveEditRequest(req.id)} disabled={savingRequest}
+                                  className="btn-primary text-xs py-2 disabled:opacity-60">
+                                  {savingRequest ? '⏳...' : '💾 Sauvegarder'}
+                                </button>
+                                <button onClick={() => setEditingRequest(null)} className="btn-secondary text-xs py-2">Annuler</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pro confirmé */}
+                          {req.status === 'confirmed' && acceptedPro && (
+                            <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-lg text-white">🧹</div>
+                                  <div>
+                                    <p className="text-sm font-700 text-gray-800">{acceptedPro.pro?.first_name} {acceptedPro.pro?.last_name}</p>
+                                    <p className="text-xs text-green-600 font-600">Offre acceptée — {acceptedPro.price} $</p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button onClick={() => setViewingPro(acceptedPro.pro)}
+                                    className="text-xs font-600 bg-white text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all">
+                                    Profil
+                                  </button>
+                                  <button onClick={() => setChatRequest({ id: req.id, chaletName: chalet?.name })}
+                                    className="text-xs font-600 bg-teal text-white px-3 py-1.5 rounded-lg hover:bg-teal/90 transition-all">
+                                    💬 Chat
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Offres reçues (demande ouverte) */}
+                          {req.status === 'open' && (
+                            <div>
+                              {offers.length === 0 ? (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                                  <p className="text-sm text-gray-400">⏳ En attente d'offres des professionnels...</p>
+                                  <p className="text-xs text-gray-300 mt-1">Les pros proches de votre chalet recevront une notification.</p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-sm font-700 text-gray-800 mb-2">
+                                    📨 {offers.length} offre{offers.length > 1 ? 's' : ''} reçue{offers.length > 1 ? 's' : ''}
+                                  </p>
+                                  {offers.map(offer => (
+                                    <div key={offer.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-2 hover:border-coral transition-all">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-coral-light to-amber-300 flex items-center justify-center text-lg">
+                                          {offer.pro?.avatar_url
+                                            ? <img src={offer.pro.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
+                                            : '👩'
+                                          }
+                                        </div>
+                                        <div>
+                                          <p className="text-sm font-700 text-gray-800">{offer.pro?.first_name} {offer.pro?.last_name}</p>
+                                          <p className="text-xs text-gray-400">
+                                            {offer.pro?.experience || 'Nouveau'}
+                                            {offer.pro?.languages?.length > 0 && ` • ${offer.pro.languages.join(', ')}`}
+                                          </p>
+                                          {offer.message && (
+                                            <p className="text-xs text-gray-500 mt-0.5 italic">"{offer.message}"</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="text-right flex-shrink-0 ml-3">
+                                        <p className="text-lg font-800 text-gray-900">{offer.price} $</p>
+                                        <div className="flex gap-2 mt-1">
+                                          <button
+                                            onClick={() => handleAccept(req.id, offer.id, offer.pro_id, offer.price)}
+                                            className="text-xs font-700 bg-coral text-white px-3 py-1.5 rounded-lg hover:bg-coral-dark transition-all">
+                                            ✅ Accepter
+                                          </button>
+                                          <button
+                                            onClick={() => setViewingPro(offer.pro)}
+                                            className="text-xs font-600 bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all">
+                                            Profil
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── Onglet 2 : Historique ── */}
+      {tab === 2 && (
         <div>
           {/* Stats résumé */}
           <div className="grid grid-cols-3 gap-3 mb-6">
@@ -812,8 +1055,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 2 : Accès ── */}
-      {tab === 2 && (
+      {/* ── Onglet 3 : Accès ── */}
+      {tab === 3 && (
         <div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm text-blue-700">
             🔒 <strong>Envoi automatique et sécurisé</strong> — Les détails d'accès sont transmis uniquement au professionnel accepté, dès l'acceptation de son offre.
@@ -917,8 +1160,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 3 : Paiement ── */}
-      {tab === 3 && (
+      {/* ── Onglet 4 : Paiement ── */}
+      {tab === 4 && (
         <div>
           <div className="card mb-4">
             <h3 className="font-700 text-gray-900 mb-4">💳 Méthode de paiement</h3>
