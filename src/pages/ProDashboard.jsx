@@ -108,7 +108,9 @@ export default function ProDashboard() {
     }
   }
 
-  // Demandes ouvertes filtrées par rayon
+  // Toutes les demandes ouvertes (pour la carte)
+  const allOpenReqs = useMemo(() => requests.filter(r => r.status === 'open'), [requests])
+  // Demandes ouvertes filtrées par rayon (pour la liste + notifications)
   const openReqs = useMemo(() => getOpenRequestsNearby(profile), [requests, profile])
   // Mes missions en cours
   const myActive = useMemo(() => requests.filter(r =>
@@ -489,7 +491,10 @@ export default function ProDashboard() {
           {/* Demandes ouvertes */}
           <div className="flex items-center justify-between mb-3 mt-5">
             <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide">
-              Demandes à proximité ({openReqs.length})
+              {viewMode === 'map'
+                ? `Toutes les demandes (${allOpenReqs.length})`
+                : `Demandes à proximité (${openReqs.length})`
+              }
             </h2>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               <button onClick={() => setViewMode('list')}
@@ -512,7 +517,7 @@ export default function ProDashboard() {
             <div className="mb-5">
               <Suspense fallback={<div className="h-96 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400">🗺️ Chargement de la carte...</div>}>
                 <MapView
-                  requests={openReqs}
+                  requests={allOpenReqs}
                   proLat={profile?.lat}
                   proLng={profile?.lng}
                   radius={profile?.radius_km || 25}
