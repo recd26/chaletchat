@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 
@@ -6,6 +6,7 @@ export function useNotifications() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
+  const channelRef = useRef(null)
 
   const unreadCount = notifications.filter(n => !n.read_at).length
 
@@ -13,8 +14,10 @@ export function useNotifications() {
     if (!user) return
     fetchNotifications()
 
+    // Unique channel name per instance to avoid conflicts
+    const channelName = `notifications-${user.id}-${Date.now()}`
     const channel = supabase
-      .channel('notifications-changes')
+      .channel(channelName)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -24,6 +27,8 @@ export function useNotifications() {
         setNotifications(prev => [payload.new, ...prev])
       })
       .subscribe()
+
+    channelRef.current = channel
 
     return () => supabase.removeChannel(channel)
   }, [user])

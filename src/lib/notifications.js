@@ -6,7 +6,7 @@ import { haversineDistance } from './geocode'
  */
 export async function sendNotification({ userId, type, title, body, requestId, senderId }) {
   // 1. Notification in-app (insert dans la table)
-  await supabase.from('notifications').insert({
+  const { error } = await supabase.from('notifications').insert({
     user_id: userId,
     type,
     title,
@@ -14,6 +14,9 @@ export async function sendNotification({ userId, type, title, body, requestId, s
     request_id: requestId,
     sender_id: senderId,
   })
+  if (error) {
+    console.error('Erreur notification insert:', error.message, { userId, type, title })
+  }
 
   // 2. Email via Edge Function
   try {
@@ -27,35 +30,56 @@ export async function sendNotification({ userId, type, title, body, requestId, s
 }
 
 /**
- * Notifie tous les pros dans le rayon d'une nouvelle demande
+ * Notifie tous les pros dans le rayon d'une nouvelle demande.
+ * Si le chalet n'a pas de coordonnées, on notifie TOUS les pros (fallback).
+ * Les pros sans coordonnées reçoivent aussi les notifications (ils voient tout).
  */
 export async function notifyNearbyPros({ request, chalet, senderId }) {
-  if (!chalet?.lat || !chalet?.lng) return
+  const chaletHasCoords = chalet?.lat && chalet?.lng
+  const chaletName = chalet?.name || 'Chalet'
+  const chaletCity = chalet?.city || 'proximité'
 
-  // Récupérer tous les pros avec coordonnées
-  const { data: pros } = await supabase
+  // Récupérer TOUS les pros (avec ou sans coordonnées)
+  const { data: pros, error } = await supabase
     .from('profiles')
     .select('id, first_name, lat, lng, radius_km')
     .eq('role', 'pro')
-    .not('lat', 'is', null)
-    .not('lng', 'is', null)
 
+  if (error) {
+    console.error('Erreur fetch pros pour notification:', error.message)
+    return
+  }
   if (!pros?.length) return
 
   const notifications = []
   for (const pro of pros) {
-    const dist = haversineDistance(
-      { lat: pro.lat, lng: pro.lng },
-      { lat: chalet.lat, lng: chalet.lng }
-    )
-    const radius = pro.radius_km || 25
-    if (dist <= radius) {
+    // Si le pro ET le chalet ont des coordonnées, vérifier la distance
+    if (chaletHasCoords && pro.lat && pro.lng) {
+      const dist = haversineDistance(
+        { lat: pro.lat, lng: pro.lng },
+        { lat: chalet.lat, lng: chalet.lng }
+      )
+      const radius = pro.radius_km || 25
+      if (dist <= radius) {
+        notifications.push(
+          sendNotification({
+            userId: pro.id,
+            type: 'new_request_nearby',
+            title: 'Nouvelle demande de ménage',
+            body: `${chaletName} à ${chaletCity} — ${Math.round(dist)} km de vous`,
+            requestId: request.id,
+            senderId,
+          })
+        )
+      }
+    } else {
+      // Pas de coordonnées → notifier quand même (fallback)
       notifications.push(
         sendNotification({
           userId: pro.id,
           type: 'new_request_nearby',
           title: 'Nouvelle demande de ménage',
-          body: `${chalet.name || 'Chalet'} à ${chalet.city || 'proximité'} — ${Math.round(dist)} km de vous`,
+          body: `${chaletName} à ${chaletCity}`,
           requestId: request.id,
           senderId,
         })
@@ -63,7 +87,9 @@ export async function notifyNearbyPros({ request, chalet, senderId }) {
     }
   }
 
-  await Promise.allSettled(notifications)
+  if (notifications.length > 0) {
+    await Promise.allSettled(notifications)
+  }
 }
 
 /**
