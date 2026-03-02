@@ -3,19 +3,39 @@ import { haversineDistance } from './geocode'
 
 /**
  * Envoie une notification in-app + email
- * Adapté au schéma : notifications(user_id, title, message, type, is_read, data)
+ * Schéma : notifications(id, user_id, title, message, type, is_read, data, created_at)
  */
 export async function sendNotification({ userId, type, title, body, requestId, senderId }) {
-  // 1. Notification in-app (insert dans la table)
-  const { error } = await supabase.from('notifications').insert({
+  if (!userId || !title) {
+    console.error('sendNotification: userId ou title manquant', { userId, type, title })
+    return
+  }
+
+  // 1. Notification in-app — essai avec data JSONB, fallback sans
+  const row = {
     user_id: userId,
-    type,
+    type: type || 'info',
     title,
-    message: body,
+    message: body || title,
+  }
+
+  // Tenter avec le champ data (JSONB) s'il existe dans la table
+  let { error } = await supabase.from('notifications').insert({
+    ...row,
     data: { request_id: requestId, sender_id: senderId },
   })
+
+  // Si échec (ex: colonne data inexistante), réessayer sans data
   if (error) {
-    console.error('Erreur notification insert:', error.message, { userId, type, title })
+    console.warn('Notification insert avec data échoué, retry sans data:', error.message)
+    const retry = await supabase.from('notifications').insert(row)
+    error = retry.error
+  }
+
+  if (error) {
+    console.error('❌ NOTIFICATION ECHEC FINAL:', error.message, error.details, error.hint, row)
+  } else {
+    console.log('✅ Notification créée:', type, 'pour', userId)
   }
 
   // 2. Email via Edge Function
@@ -24,7 +44,6 @@ export async function sendNotification({ userId, type, title, body, requestId, s
       body: { userId, type, title, body, requestId },
     })
   } catch (err) {
-    // L'email est un bonus — ne pas bloquer si ça échoue
     console.warn('Email non envoyé:', err.message)
   }
 }
@@ -54,7 +73,10 @@ export async function notifyNearbyPros({ request, chalet, senderId }) {
     console.error('Erreur fetch pros pour notification:', error.message)
     return
   }
-  if (!pros?.length) return
+  if (!pros?.length) {
+    console.warn('notifyNearbyPros: aucun pro avec coordonnées trouvé')
+    return
+  }
 
   const notifications = []
   for (const pro of pros) {
@@ -76,6 +98,8 @@ export async function notifyNearbyPros({ request, chalet, senderId }) {
       )
     }
   }
+
+  console.log(`notifyNearbyPros: ${pros.length} pros trouvés, ${notifications.length} dans le rayon`)
 
   if (notifications.length > 0) {
     await Promise.allSettled(notifications)

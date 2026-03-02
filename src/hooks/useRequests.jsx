@@ -106,7 +106,7 @@ export function useRequests() {
 
     // Notifier le pro accepte
     const request = requests.find(r => r.id === requestId)
-    sendNotification({
+    await sendNotification({
       userId: proId,
       type: 'offer_accepted',
       title: 'Offre acceptee !',
@@ -118,7 +118,7 @@ export function useRequests() {
     // Notifier les pros refuses
     const declinedOffers = request?.offers?.filter(o => o.id !== offerId && o.pro_id !== proId) || []
     for (const offer of declinedOffers) {
-      sendNotification({
+      await sendNotification({
         userId: offer.pro_id,
         type: 'offer_declined',
         title: 'Offre non retenue',
@@ -144,7 +144,7 @@ export function useRequests() {
     // Notifier le proprio
     const request = requests.find(r => r.id === requestId)
     if (request?.owner_id) {
-      sendNotification({
+      await sendNotification({
         userId: request.owner_id,
         type: 'new_offer',
         title: `Nouvelle offre de ${profile.first_name}`,
