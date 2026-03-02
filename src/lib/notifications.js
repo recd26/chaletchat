@@ -30,20 +30,25 @@ export async function sendNotification({ userId, type, title, body, requestId, s
 }
 
 /**
- * Notifie tous les pros dans le rayon d'une nouvelle demande.
- * Si le chalet n'a pas de coordonnées, on notifie TOUS les pros (fallback).
- * Les pros sans coordonnées reçoivent aussi les notifications (ils voient tout).
+ * Notifie uniquement les pros dont le rayon couvre le chalet.
+ * Requiert que le chalet ET le pro aient des coordonnées (lat/lng).
  */
 export async function notifyNearbyPros({ request, chalet, senderId }) {
-  const chaletHasCoords = chalet?.lat && chalet?.lng
+  if (!chalet?.lat || !chalet?.lng) {
+    console.warn('notifyNearbyPros: chalet sans coordonnées, aucune notification envoyée')
+    return
+  }
+
   const chaletName = chalet?.name || 'Chalet'
   const chaletCity = chalet?.city || 'proximité'
 
-  // Récupérer TOUS les pros (avec ou sans coordonnées)
+  // Récupérer les pros qui ont des coordonnées
   const { data: pros, error } = await supabase
     .from('profiles')
     .select('id, first_name, lat, lng, radius_km')
     .eq('role', 'pro')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
 
   if (error) {
     console.error('Erreur fetch pros pour notification:', error.message)
@@ -53,33 +58,18 @@ export async function notifyNearbyPros({ request, chalet, senderId }) {
 
   const notifications = []
   for (const pro of pros) {
-    // Si le pro ET le chalet ont des coordonnées, vérifier la distance
-    if (chaletHasCoords && pro.lat && pro.lng) {
-      const dist = haversineDistance(
-        { lat: pro.lat, lng: pro.lng },
-        { lat: chalet.lat, lng: chalet.lng }
-      )
-      const radius = pro.radius_km || 25
-      if (dist <= radius) {
-        notifications.push(
-          sendNotification({
-            userId: pro.id,
-            type: 'new_request_nearby',
-            title: 'Nouvelle demande de ménage',
-            body: `${chaletName} à ${chaletCity} — ${Math.round(dist)} km de vous`,
-            requestId: request.id,
-            senderId,
-          })
-        )
-      }
-    } else {
-      // Pas de coordonnées → notifier quand même (fallback)
+    const dist = haversineDistance(
+      { lat: pro.lat, lng: pro.lng },
+      { lat: chalet.lat, lng: chalet.lng }
+    )
+    const radius = pro.radius_km || 25
+    if (dist <= radius) {
       notifications.push(
         sendNotification({
           userId: pro.id,
           type: 'new_request_nearby',
           title: 'Nouvelle demande de ménage',
-          body: `${chaletName} à ${chaletCity}`,
+          body: `${chaletName} à ${chaletCity} — ${Math.round(dist)} km de vous`,
           requestId: request.id,
           senderId,
         })
