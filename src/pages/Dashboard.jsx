@@ -164,6 +164,28 @@ export default function Dashboard() {
     try {
       await submitReview(requestId, proId, data.rating, data.comment || '')
       toast('⭐ Évaluation envoyée ! Merci !', 'success')
+
+      // Nettoyer les photos de checklist après évaluation
+      const req = myRequests.find(r => r.id === requestId)
+      const completions = req?.checklist_completions || []
+      const photoPaths = completions
+        .filter(c => c.photo_url)
+        .map(c => {
+          // Extraire le path storage depuis l'URL publique (après /cleaning-photos/)
+          const match = c.photo_url.match(/cleaning-photos\/(.+)$/)
+          return match ? match[1] : null
+        })
+        .filter(Boolean)
+
+      if (photoPaths.length > 0) {
+        // Supprimer les fichiers du storage
+        await supabase.storage.from('cleaning-photos').remove(photoPaths)
+        // Effacer les photo_url en DB
+        await supabase
+          .from('checklist_completions')
+          .update({ photo_url: null })
+          .eq('request_id', requestId)
+      }
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
     } finally {
