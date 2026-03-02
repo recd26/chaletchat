@@ -49,6 +49,7 @@ export default function NewRequest() {
   const [deadlineTime, setDeadlineTime] = useState('')
   const [hours, setHours]               = useState('3')
   const [urgent, setUrgent]             = useState(false)
+  const [suggestedBudget, setSuggestedBudget] = useState('')
   const [notes, setNotes]               = useState('')
 
   // Produits sur place
@@ -112,6 +113,7 @@ export default function NewRequest() {
         deadline_time: deadlineTime || null,
         estimated_hours: parseFloat(hours),
         is_urgent: urgent,
+        suggested_budget: suggestedBudget ? parseFloat(suggestedBudget) : null,
         special_notes: notes || null,
         supplies_on_site: supplies,
         laundry_tasks: laundry.filter(l => l.checked),
@@ -199,6 +201,23 @@ export default function NewRequest() {
                   <option key={h} value={h}>{h}h</option>
                 ))}
               </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Budget suggéré (optionnel)</label>
+              <p className="text-xs text-gray-400 mb-2">Montant indicatif pour guider les offres des pros.</p>
+              <div className="relative w-48">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-700 text-sm">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  className="input-field pl-7"
+                  placeholder="Ex: 150"
+                  value={suggestedBudget}
+                  onChange={e => setSuggestedBudget(e.target.value)}
+                />
+              </div>
             </div>
 
             <label className="flex items-center gap-3 cursor-pointer">
@@ -344,6 +363,7 @@ export default function NewRequest() {
                 <p><span className="text-gray-400">Date :</span> <strong>{new Date(date + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong></p>
                 <p><span className="text-gray-400">Heure :</span> <strong>{time}</strong>{deadlineTime && <> — <span className="text-gray-400">limite</span> <strong>{deadlineTime}</strong></>}</p>
                 <p><span className="text-gray-400">Durée :</span> <strong>~{hours}h</strong></p>
+                {suggestedBudget && <p><span className="text-gray-400">Budget suggéré :</span> <strong>~{suggestedBudget} $</strong></p>}
                 {urgent && <p className="text-coral font-700">Demande urgente</p>}
                 <p><span className="text-gray-400">Produits sur place :</span> <strong>{supplies.filter(s => s.available).length}</strong> / {supplies.length}</p>
                 <p><span className="text-gray-400">Lavage :</span> <strong>{laundry.filter(l => l.checked).length}</strong> item{laundry.filter(l => l.checked).length > 1 ? 's' : ''}</p>

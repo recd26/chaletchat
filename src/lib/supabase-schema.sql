@@ -93,6 +93,7 @@ create table public.cleaning_requests (
   laundry_tasks       jsonb default '[]',
   spa_tasks           jsonb default '[]',
   -- Paiement
+  suggested_budget    numeric(10,2),
   agreed_price        numeric(10,2),
   stripe_payment_intent_id text,
   payment_status      text default 'pending'
@@ -503,5 +504,9 @@ DO $$ BEGIN
       WITH CHECK (assigned_pro_id = auth.uid());
   END IF;
 END $$;
+
+-- Migration: ajouter budget suggéré aux demandes
+ALTER TABLE public.cleaning_requests
+  ADD COLUMN IF NOT EXISTS suggested_budget numeric(10,2);
 
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────

@@ -4,11 +4,11 @@ import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload } from 'lucide-react'
+import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ChatPanel from '../components/ChatPanel'
 import { PROVINCES } from '../lib/constants'
-import { geocodeAddress } from '../lib/geocode'
+import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
@@ -62,6 +62,23 @@ export default function ProDashboard() {
   const [editOfferPrice, setEditOfferPrice] = useState('')
   const [editOfferMsg, setEditOfferMsg] = useState('')
   const [savingOffer, setSavingOffer] = useState(false)
+  const [expandedReq, setExpandedReq] = useState(null)
+
+  // Helpers pour les cartes de demande
+  function isAutoUrgent(req) {
+    if (req.is_urgent) return true
+    const scheduled = new Date(`${req.scheduled_date}T${req.scheduled_time || '12:00'}`)
+    const diff = scheduled - new Date()
+    return diff > 0 && diff < 48 * 60 * 60 * 1000
+  }
+
+  function getDistance(req) {
+    if (!profile?.lat || !profile?.lng || !req.chalet?.lat || !req.chalet?.lng) return null
+    return haversineDistance(
+      { lat: profile.lat, lng: profile.lng },
+      { lat: req.chalet.lat, lng: req.chalet.lng }
+    )
+  }
 
   async function handleDocUpload(type, e) {
     const file = e.target.files?.[0]
@@ -495,68 +512,139 @@ export default function ProDashboard() {
               <p className="text-sm text-gray-400 mt-1">Vous recevrez une notification dès qu'une demande est publiée près de chez vous.</p>
             </div>
           ) : viewMode === 'list' ? (
-            openReqs.map(req => (
+            openReqs.map(req => {
+              const dist = getDistance(req)
+              const urgent = isAutoUrgent(req)
+              const laundryCount = req.laundry_tasks?.length || 0
+              const hasSpa = req.spa_tasks?.length > 0
+              const hasNotes = !!req.special_notes
+              const isExpanded = expandedReq === req.id
+
+              return (
               <div key={req.id} id={`request-${req.id}`} className={`card mb-4 hover:border-teal transition-all ${highlightRequest === req.id ? 'ring-2 ring-teal ring-offset-2' : ''}`}>
+                {/* A. Header — nom, ville, chambres, sdb, urgence */}
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
-                    <p className="text-xs text-gray-400">{req.chalet?.city} • {req.chalet?.bedrooms} ch.</p>
+                    <p className="text-xs text-gray-400">{req.chalet?.city} • {req.chalet?.bedrooms || '?'} ch. • {req.chalet?.bathrooms || '?'} sdb</p>
                   </div>
-                  {req.is_urgent && <span className="pill-coral">🔴 Urgent</span>}
+                  {urgent && (
+                    <span className="pill-coral">
+                      {req.is_urgent ? '🔴 Urgent' : '🔴 < 48h'}
+                    </span>
+                  )}
                 </div>
 
-                <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
-                  <span>🗓 {new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
-                  <span>⏰ {req.scheduled_time}</span>
-                  {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
-                  <span>📸 Photo par pièce</span>
+                {/* B. Grille 4 stats clés */}
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-base mb-0.5">📍</p>
+                    <p className="text-sm font-800 text-gray-900">{dist != null ? `${dist.toFixed(1)} km` : '—'}</p>
+                    <p className="text-[10px] text-gray-400">Distance</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-base mb-0.5">💰</p>
+                    <p className="text-sm font-800 text-gray-900">{req.suggested_budget ? `${req.suggested_budget} $` : '—'}</p>
+                    <p className="text-[10px] text-gray-400">Budget</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-base mb-0.5">🗓</p>
+                    <p className="text-sm font-800 text-gray-900">{new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day:'numeric', month:'short' })}</p>
+                    <p className="text-[10px] text-gray-400">{new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short' })}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-base mb-0.5">⏱</p>
+                    <p className="text-sm font-800 text-gray-900">~{req.estimated_hours || '?'}h</p>
+                    <p className="text-[10px] text-gray-400">Durée</p>
+                  </div>
                 </div>
 
-                {/* Produits sur place */}
-                {req.supplies_on_site?.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {req.supplies_on_site.map((s, i) => (
-                        <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
-                          s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200 line-through'
-                        }`}>{s.name}</span>
-                      ))}
-                    </div>
+                {/* C. Tags résumé compacts */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-lg">⏰ {req.scheduled_time}</span>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-lg">📸 Photo/pièce</span>
+                  {laundryCount > 0 && (
+                    <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1 rounded-lg">🧺 Lavage ({laundryCount})</span>
+                  )}
+                  {hasSpa && (
+                    <span className="text-xs bg-purple-50 text-purple-600 border border-purple-200 px-2 py-1 rounded-lg">♨️ Spa</span>
+                  )}
+                  {hasNotes && (
+                    <span className="text-xs bg-amber-50 text-amber-600 border border-amber-200 px-2 py-1 rounded-lg">📝 Notes</span>
+                  )}
+                </div>
+
+                {/* D. Bouton "Consulter la demande" */}
+                <button
+                  onClick={() => setExpandedReq(isExpanded ? null : req.id)}
+                  className="w-full text-left text-sm font-600 text-teal hover:text-teal/80 transition-colors flex items-center gap-1.5 mb-3 py-1">
+                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {isExpanded ? 'Masquer les détails' : 'Consulter la demande →'}
+                </button>
+
+                {/* E. Section pliable — détails complets */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100 pt-3 mb-3 space-y-3">
+                    {/* Produits sur place */}
+                    {req.supplies_on_site?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {req.supplies_on_site.map((s, i) => (
+                            <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
+                              s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200 line-through'
+                            }`}>{s.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lavage détaillé */}
+                    {laundryCount > 0 && (
+                      <div>
+                        <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {req.laundry_tasks.map((l, i) => (
+                            <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Spa détaillé */}
+                    {hasSpa && (
+                      <div>
+                        <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {req.spa_tasks.map((s, i) => (
+                            <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes spéciales */}
+                    {hasNotes && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
+                        📝 {req.special_notes}
+                      </div>
+                    )}
+
+                    {/* Checklist des pièces */}
+                    {req.chalet?.checklist_templates?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-700 text-gray-400 mb-1.5">🏠 Pièces à nettoyer ({req.chalet.checklist_templates.length}) :</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {req.chalet.checklist_templates.sort((a, b) => a.position - b.position).map(t => (
+                            <span key={t.id} className="text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-1 rounded-lg">{t.room_name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Lavage */}
-                {req.laundry_tasks?.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {req.laundry_tasks.map((l, i) => (
-                        <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Spa */}
-                {req.spa_tasks?.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {req.spa_tasks.map((s, i) => (
-                        <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {req.special_notes && (
-                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
-                    📝 {req.special_notes}
-                  </div>
-                )}
-
-                {/* Faire une offre / statut offre */}
+                {/* F. Faire une offre / statut offre */}
                 {(() => {
                   const myOffer = req.offers?.find(o => o.pro_id === profile?.id)
                   // Offre acceptée : soit status='accepted', soit la demande est confirmée et le pro est assigné
@@ -652,7 +740,8 @@ export default function ProDashboard() {
                   )
                 })()}
               </div>
-            ))
+              )
+            })
           ) : null}
         </div>
       )}
