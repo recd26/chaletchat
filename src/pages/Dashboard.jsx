@@ -10,7 +10,7 @@ import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
-const TABS = ['🏡 Tableau de bord', '🏔 Mes chalets', '📋 Demandes', '✅ Historique', '🔑 Accès', '💳 Paiement']
+const TABS = ['🏡 Tableau de bord', '🏔 Mes chalets', '📋 Demandes', '✅ Historique', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [reviewHover, setReviewHover] = useState({}) // { [requestId]: hoverStar }
   const [submittingReview, setSubmittingReview] = useState(null)
   const [completing, setCompleting] = useState(null)
+  const [expandedAccess, setExpandedAccess] = useState({}) // { chaletId: true/false }
   const [editingAccess, setEditingAccess] = useState(null) // chalet id
   const [accessForm, setAccessForm] = useState({})
   const [savingAccess, setSavingAccess] = useState(false)
@@ -101,7 +102,7 @@ export default function Dashboard() {
   function handleNewRequest() {
     if (!savedCard) {
       toast('💳 Ajoutez une méthode de paiement avant de créer une demande', 'info')
-      setTab(5)
+      setTab(4)
       return
     }
     navigate('/nouvelle-demande')
@@ -693,11 +694,6 @@ export default function Dashboard() {
                       <span className="flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg">
                         <Home size={12} /> {rooms.length} pièce{rooms.length > 1 ? 's' : ''}
                       </span>
-                      {chalet.access_code && (
-                        <span className="flex items-center gap-1 text-xs bg-green-50 text-green-600 border border-green-200 px-2.5 py-1.5 rounded-lg">
-                          <Lock size={12} /> Accès configuré
-                        </span>
-                      )}
                       {completedCount > 0 && (
                         <span className="flex items-center gap-1 text-xs bg-teal/10 text-teal border border-teal/20 px-2.5 py-1.5 rounded-lg">
                           <CheckCircle size={12} /> {completedCount} mission{completedCount > 1 ? 's' : ''}
@@ -736,6 +732,110 @@ export default function Dashboard() {
                         ⚠️ Aucune pièce définie — modifiez ce chalet pour ajouter la checklist.
                       </div>
                     )}
+
+                    {/* Section Accès (pliable) */}
+                    <div className="mb-4">
+                      <button
+                        onClick={() => setExpandedAccess(prev => ({ ...prev, [chalet.id]: !prev[chalet.id] }))}
+                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-700 transition-all ${
+                          chalet.access_code
+                            ? 'bg-green-50 border border-green-200 text-green-700'
+                            : 'bg-amber-50 border border-amber-200 text-amber-700'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Lock size={13} />
+                          {chalet.access_code ? '🔑 Accès configuré' : '⚠️ Accès non configuré'}
+                        </span>
+                        <span className="text-[10px]">{expandedAccess[chalet.id] ? '▲' : '▼'}</span>
+                      </button>
+
+                      {expandedAccess[chalet.id] && (
+                        <div className="mt-2 bg-gray-50 rounded-xl border border-gray-200 p-3">
+                          {chalet.access_code ? (
+                            <div className="space-y-1.5">
+                              {[
+                                { icon: '🔑', label: 'Code porte', val: chalet.access_code, secret: true, id: chalet.id },
+                                { icon: '📦', label: 'Boîte à clé', val: chalet.key_box },
+                                { icon: '🅿️', label: 'Stationnement', val: chalet.parking_info },
+                                { icon: '🌐', label: 'Wi-Fi', val: chalet.wifi_name ? `${chalet.wifi_name} • ${chalet.wifi_password}` : null, secret: true, id: `wifi-${chalet.id}` },
+                                { icon: '⚠️', label: 'Notes', val: chalet.special_notes },
+                              ].filter(r => r.val).map(row => (
+                                <div key={row.label} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100">
+                                  <span className="text-sm">{row.icon}</span>
+                                  <span className="text-[10px] font-700 text-gray-400 w-20 flex-shrink-0 uppercase tracking-wide">{row.label}</span>
+                                  <span className="text-xs font-600 text-gray-800 flex-1">
+                                    {row.secret ? (showCode[row.id] ? row.val : '••••••') : row.val}
+                                  </span>
+                                  {row.secret && (
+                                    <button onClick={() => toggleCode(row.id)} className="text-gray-400 hover:text-gray-600">
+                                      {showCode[row.id] ? <EyeOff size={13}/> : <Eye size={13}/>}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-amber-600">
+                              Configurez les accès — ils seront envoyés automatiquement au prochain pro accepté.
+                            </p>
+                          )}
+
+                          {/* Formulaire d'édition des accès */}
+                          {editingAccess === chalet.id ? (
+                            <div className="mt-3 bg-white rounded-xl p-3 border border-gray-200">
+                              <h4 className="text-xs font-700 text-gray-700 mb-2">🔑 Modifier les accès</h4>
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div>
+                                  <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Code porte</label>
+                                  <input className="input-field text-xs" placeholder="1234#" value={accessForm.access_code}
+                                    onChange={e => setAccessForm(f => ({ ...f, access_code: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Boîte à clé</label>
+                                  <input className="input-field text-xs" placeholder="Sous le perron" value={accessForm.key_box}
+                                    onChange={e => setAccessForm(f => ({ ...f, key_box: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Stationnement</label>
+                                <input className="input-field text-xs" placeholder="2 places devant" value={accessForm.parking_info}
+                                  onChange={e => setAccessForm(f => ({ ...f, parking_info: e.target.value }))} />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div>
+                                  <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Nom Wi-Fi</label>
+                                  <input className="input-field text-xs" placeholder="ChaletWifi" value={accessForm.wifi_name}
+                                    onChange={e => setAccessForm(f => ({ ...f, wifi_name: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Mot de passe Wi-Fi</label>
+                                  <input className="input-field text-xs" placeholder="••••••" value={accessForm.wifi_password}
+                                    onChange={e => setAccessForm(f => ({ ...f, wifi_password: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="mb-3">
+                                <label className="block text-[10px] font-700 text-gray-400 uppercase tracking-wide mb-0.5">Notes spéciales</label>
+                                <textarea className="input-field text-xs min-h-12 resize-none" placeholder="Instructions particulières..."
+                                  value={accessForm.special_notes}
+                                  onChange={e => setAccessForm(f => ({ ...f, special_notes: e.target.value }))} />
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => saveAccess(chalet.id)} disabled={savingAccess}
+                                  className="btn-primary text-xs py-1.5 disabled:opacity-60">
+                                  {savingAccess ? '⏳...' : '💾 Sauvegarder'}
+                                </button>
+                                <button onClick={() => setEditingAccess(null)} className="btn-secondary text-xs py-1.5">Annuler</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => startEditAccess(chalet)} className="btn-secondary text-xs mt-2 w-full">
+                              {chalet.access_code ? '✏️ Modifier les accès' : '➕ Configurer les accès'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Actions */}
                     <div className="flex gap-2">
@@ -1216,113 +1316,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Onglet 4 : Accès ── */}
+      {/* ── Onglet 4 : Paiement ── */}
       {tab === 4 && (
-        <div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm text-blue-700">
-            🔒 <strong>Envoi automatique et sécurisé</strong> — Les détails d'accès sont transmis uniquement au professionnel accepté, dès l'acceptation de son offre.
-          </div>
-
-          {chalets.map(chalet => (
-            <div key={chalet.id} className="card mb-4">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="font-700 text-gray-900">🏔 {chalet.name}</h3>
-                  <p className="text-xs text-gray-400">{chalet.city}</p>
-                </div>
-                {chalet.access_code
-                  ? <span className="pill-active">✅ Accès configuré</span>
-                  : <span className="pill-pending">⏳ Non configuré</span>}
-              </div>
-
-              {chalet.access_code ? (
-                <div className="space-y-2">
-                  {[
-                    { icon:'📍', label:'Adresse', val: chalet.address },
-                    { icon:'🔑', label:'Code porte', val: chalet.access_code, secret: true, id: chalet.id },
-                    { icon:'📦', label:'Boîte à clé', val: chalet.key_box },
-                    { icon:'🅿️', label:'Stationnement', val: chalet.parking_info },
-                    { icon:'🌐', label:'Wi-Fi', val: chalet.wifi_name ? `${chalet.wifi_name} • ${chalet.wifi_password}` : null, secret: true, id: `wifi-${chalet.id}` },
-                    { icon:'⚠️', label:'Notes', val: chalet.special_notes },
-                  ].filter(r => r.val).map(row => (
-                    <div key={row.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100">
-                      <span className="text-base">{row.icon}</span>
-                      <span className="text-xs font-700 text-gray-400 w-24 flex-shrink-0">{row.label}</span>
-                      <span className="text-sm font-600 text-gray-800 flex-1">
-                        {row.secret ? (showCode[row.id] ? row.val : '••••••') : row.val}
-                      </span>
-                      {row.secret && (
-                        <button onClick={() => toggleCode(row.id)} className="text-gray-400 hover:text-gray-600">
-                          {showCode[row.id] ? <EyeOff size={14}/> : <Eye size={14}/>}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 mb-3">
-                  ⚠️ Configurez les accès — ils seront envoyés automatiquement au prochain pro accepté.
-                </div>
-              )}
-
-              {editingAccess === chalet.id ? (
-                <div className="mt-4 bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <h4 className="text-sm font-700 text-gray-700 mb-3">🔑 Modifier les accès</h4>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Code porte</label>
-                      <input className="input-field" placeholder="1234#" value={accessForm.access_code}
-                        onChange={e => setAccessForm(f => ({ ...f, access_code: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Boîte à clé</label>
-                      <input className="input-field" placeholder="Sous le perron" value={accessForm.key_box}
-                        onChange={e => setAccessForm(f => ({ ...f, key_box: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="mb-3">
-                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Stationnement</label>
-                    <input className="input-field" placeholder="2 places disponibles devant" value={accessForm.parking_info}
-                      onChange={e => setAccessForm(f => ({ ...f, parking_info: e.target.value }))} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Nom Wi-Fi</label>
-                      <input className="input-field" placeholder="ChaletWifi" value={accessForm.wifi_name}
-                        onChange={e => setAccessForm(f => ({ ...f, wifi_name: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Mot de passe Wi-Fi</label>
-                      <input className="input-field" placeholder="••••••" value={accessForm.wifi_password}
-                        onChange={e => setAccessForm(f => ({ ...f, wifi_password: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Notes spéciales</label>
-                    <textarea className="input-field min-h-16 resize-none" placeholder="Instructions particulières..."
-                      value={accessForm.special_notes}
-                      onChange={e => setAccessForm(f => ({ ...f, special_notes: e.target.value }))} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => saveAccess(chalet.id)} disabled={savingAccess}
-                      className="btn-primary text-xs py-2 disabled:opacity-60">
-                      {savingAccess ? '⏳...' : '💾 Sauvegarder'}
-                    </button>
-                    <button onClick={() => setEditingAccess(null)} className="btn-secondary text-xs py-2">Annuler</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => startEditAccess(chalet)} className="btn-secondary text-xs mt-3">
-                  {chalet.access_code ? '✏️ Modifier' : '➕ Configurer les accès'}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Onglet 5 : Paiement ── */}
-      {tab === 5 && (
         <div>
           <div className="card mb-4">
             <h3 className="font-700 text-gray-900 mb-4">💳 Méthode de paiement</h3>
