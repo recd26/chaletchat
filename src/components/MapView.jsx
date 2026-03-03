@@ -178,16 +178,14 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
 
           return (
             <Marker key={req.id} position={req.coords} icon={icon}>
-              {/* Tooltip au survol — aperçu rapide */}
+              {/* Tooltip au survol — 3 infos clés max */}
               <Tooltip direction="top" offset={[0, -38]} opacity={0.95}>
-                <div style={{ fontSize: '11px', lineHeight: '1.4', minWidth: '120px' }}>
-                  <strong>{req.chalet?.name}</strong>
-                  {req.suggested_budget && <span style={{ color: '#FF5A5F', fontWeight: '700' }}> — {req.suggested_budget} $</span>}
-                  <br />
-                  {dateStr} {dayStr && `(${dayStr})`} • ~{req.estimated_hours || '?'}h
-                  {urgent && <span style={{ color: '#DC2626', fontWeight: '700' }}> 🔴 Urgent</span>}
-                  {!req.inRadius && <span style={{ color: '#9CA3AF' }}> (hors zone)</span>}
-                </div>
+                <span style={{ fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                  {urgent && '🔴 '}
+                  💰 {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
+                  {req.dist != null && ` • 📍 ${req.dist.toFixed(0)} km`}
+                  {` • 🗓 ${dateStr}`}
+                </span>
               </Tooltip>
 
               {/* Popup au clic — infos complètes */}
