@@ -18,8 +18,8 @@ const ICON_MAP = {
 // Navigation : type → { path, tab }
 const NAV_MAP = {
   // Proprio reçoit
-  new_offer:          { path: '/dashboard', tab: 1 },   // Demandes
-  cleaning_completed: { path: '/dashboard', tab: 2 },   // Historique
+  new_offer:          { path: '/dashboard', tab: 2 },   // Demandes
+  cleaning_completed: { path: '/dashboard', tab: 3 },   // Historique
   // Pro reçoit
   new_request_nearby: { path: '/pro', tab: 0 },         // Demandes à proximité
   offer_accepted:     { path: '/pro', tab: 0 },
