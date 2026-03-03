@@ -37,9 +37,9 @@ function AppRoutes() {
         <Route path="/conditions" element={<Conditions />} />
         <Route path="/confidentialite" element={<Confidentialite />} />
 
-        {/* Admin */}
+        {/* Admin — réservé aux emails autorisés */}
         <Route path="/admin" element={
-          <ProtectedRoute>
+          <ProtectedRoute adminOnly>
             <AdminDashboard />
           </ProtectedRoute>
         } />

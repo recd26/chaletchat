@@ -5,19 +5,22 @@ import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Star, CheckCircle, XCircle, Eye } from 'lucide-react'
 
-const ADMIN_EMAILS = ['admin@chaletprop.com'] // Ajouter les emails admin ici
+const ADMIN_EMAILS = ['ouellet.david@outlook.com']
 
 export default function AdminDashboard() {
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const { toasts, toast } = useToast()
   const [pros, setPros] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending') // 'all' | 'pending' | 'approved' | 'rejected'
   const [viewDoc, setViewDoc] = useState(null) // url du document à afficher
 
+  // Double sécurité — vérifier l'email même si ProtectedRoute le fait
+  const isAdmin = ADMIN_EMAILS.includes(user?.email?.toLowerCase())
+
   useEffect(() => {
-    fetchPros()
-  }, [])
+    if (isAdmin) fetchPros()
+  }, [isAdmin])
 
   async function fetchPros() {
     setLoading(true)
@@ -57,6 +60,18 @@ export default function AdminDashboard() {
     pending: pros.filter(p => p.verif_status === 'pending').length,
     approved: pros.filter(p => p.verif_status === 'approved').length,
     rejected: pros.filter(p => p.verif_status === 'rejected').length,
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center">
+        <div className="card text-center py-12 px-8 max-w-sm">
+          <p className="text-4xl mb-3">🔒</p>
+          <h2 className="text-xl font-800 text-gray-900 mb-2">Accès refusé</h2>
+          <p className="text-sm text-gray-400">Cette page est réservée aux administrateurs.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
