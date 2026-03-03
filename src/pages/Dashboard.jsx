@@ -1177,7 +1177,7 @@ export default function Dashboard() {
               const rh = reviewHover[req.id] || 0
 
               return (
-                <div key={req.id} className="card mb-4 border-green-200 border">
+                <div key={req.id} id={`request-${req.id}`} className={`card mb-4 border-green-200 border ${highlightRequest === req.id ? 'ring-2 ring-teal ring-offset-2' : ''}`}>
                   {/* En-tête */}
                   <div className="flex justify-between items-start mb-3">
                     <div>
