@@ -31,14 +31,31 @@ export default function ProDashboard() {
     if (paramTab === null && !paramReq) return
     if (paramTab !== null) setTab(parseInt(paramTab, 10))
     if (paramReq) {
+      setExpiredRequest(null) // reset
       setHighlightRequest(paramReq)
+      // Vérifier après le chargement si la demande existe encore dans la liste
       setTimeout(() => {
-        document.getElementById(`request-${paramReq}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }, 500)
+        const found = document.getElementById(`request-${paramReq}`)
+        if (found) {
+          found.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else if (!loading) {
+          // Demande non trouvée = déjà assignée à un autre pro
+          setExpiredRequest(paramReq)
+        }
+      }, 800)
       setTimeout(() => setHighlightRequest(null), 5000)
     }
     setSearchParams({}, { replace: true })
   }, [searchParams])
+
+  // Vérifier aussi quand les requests finissent de charger
+  useEffect(() => {
+    if (loading || !highlightRequest) return
+    const reqInList = requests.find(r => r.id === highlightRequest)
+    if (!reqInList) {
+      setExpiredRequest(highlightRequest)
+    }
+  }, [loading, requests, highlightRequest])
   const [offerPrice, setOfferPrice] = useState({})
   const [offerMsg,   setOfferMsg]   = useState({})
   const [uploading,  setUploading]  = useState({})
@@ -63,6 +80,7 @@ export default function ProDashboard() {
   const [editOfferMsg, setEditOfferMsg] = useState('')
   const [savingOffer, setSavingOffer] = useState(false)
   const [expandedReq, setExpandedReq] = useState(null)
+  const [expiredRequest, setExpiredRequest] = useState(null) // demande expirée (via notification)
   // Bancaire
   const [editingBank, setEditingBank] = useState(false)
   const [bankForm, setBankForm] = useState({})
@@ -533,9 +551,22 @@ export default function ProDashboard() {
             </div>
           )}
 
+          {/* Bannière demande expirée (via notification) */}
+          {expiredRequest && (
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 mb-4 text-center">
+              <p className="text-3xl mb-2">🚫</p>
+              <p className="font-700 text-gray-700">Demande non disponible</p>
+              <p className="text-sm text-gray-400 mt-1">Cette demande a déjà été attribuée à un autre professionnel.</p>
+              <button onClick={() => setExpiredRequest(null)}
+                className="text-xs font-600 text-teal hover:underline mt-3">
+                Fermer
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="text-center py-12 text-3xl">⏳</div>
-          ) : openReqs.length === 0 ? (
+          ) : openReqs.length === 0 && !expiredRequest ? (
             <div className="card text-center py-10">
               <p className="text-3xl mb-2">📍</p>
               <p className="font-700 text-gray-600">Aucune demande dans votre zone</p>
