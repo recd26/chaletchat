@@ -182,9 +182,9 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
               <Tooltip direction="top" offset={[0, -38]} opacity={0.95}>
                 <span style={{ fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
                   {urgent && '🔴 '}
-                  💰 {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
+                  {`🗓 ${dateStr}`}
                   {req.dist != null && ` • 📍 ${req.dist.toFixed(0)} km`}
-                  {` • 🗓 ${dateStr}`}
+                  {` • 📨 ${offersCount} offre${offersCount !== 1 ? 's' : ''}`}
                 </span>
               </Tooltip>
 
