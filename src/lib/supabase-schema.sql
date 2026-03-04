@@ -519,4 +519,21 @@ ALTER TABLE public.cleaning_requests
 ALTER TABLE public.checklist_templates
   ADD COLUMN IF NOT EXISTS reference_photo_url text;
 
+-- Migration: statuts de mission avec timestamps
+ALTER TABLE public.cleaning_requests
+  ADD COLUMN IF NOT EXISTS mission_en_route_at   timestamptz,
+  ADD COLUMN IF NOT EXISTS mission_sur_place_at  timestamptz,
+  ADD COLUMN IF NOT EXISTS mission_started_at    timestamptz;
+
+-- Migration: nouveaux types de notification pour statuts mission
+ALTER TABLE public.notifications
+  DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE public.notifications
+  ADD CONSTRAINT notifications_type_check
+  CHECK (type IN (
+    'new_offer','offer_accepted','offer_declined',
+    'new_message','new_request_nearby','cleaning_completed',
+    'mission_en_route','mission_sur_place','mission_en_cours'
+  ));
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────

@@ -121,3 +121,48 @@ export async function notifyCleaningCompleted({ request, chaletName, proName }) 
     senderId: request.assigned_pro_id,
   })
 }
+
+/**
+ * Notifie le proprio : le pro est en route
+ */
+export async function notifyMissionEnRoute({ request, chaletName, proName }) {
+  if (!request?.owner_id) return
+  await sendNotification({
+    userId: request.owner_id,
+    type: 'mission_en_route',
+    title: `🚗 ${proName || 'Le pro'} est en route`,
+    body: `${proName || 'Le pro'} part maintenant vers ${chaletName || 'votre chalet'}`,
+    requestId: request.id,
+    senderId: request.assigned_pro_id,
+  })
+}
+
+/**
+ * Notifie le proprio : le pro est arrivé sur place
+ */
+export async function notifyMissionSurPlace({ request, chaletName, proName }) {
+  if (!request?.owner_id) return
+  await sendNotification({
+    userId: request.owner_id,
+    type: 'mission_sur_place',
+    title: `🏠 ${proName || 'Le pro'} est arrivé(e)`,
+    body: `${proName || 'Le pro'} est sur place à ${chaletName || 'votre chalet'}`,
+    requestId: request.id,
+    senderId: request.assigned_pro_id,
+  })
+}
+
+/**
+ * Notifie le proprio : le ménage a commencé (1ère photo)
+ */
+export async function notifyMissionStarted({ request, chaletName, proName }) {
+  if (!request?.owner_id) return
+  await sendNotification({
+    userId: request.owner_id,
+    type: 'mission_en_cours',
+    title: '🧹 Ménage commencé !',
+    body: `${proName || 'Le pro'} a commencé le ménage de ${chaletName || 'votre chalet'}`,
+    requestId: request.id,
+    senderId: request.assigned_pro_id,
+  })
+}

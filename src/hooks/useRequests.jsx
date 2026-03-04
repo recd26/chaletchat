@@ -2,8 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import { haversineDistance } from '../lib/geocode'
-import { sendNotification, notifyNearbyPros, notifyCleaningCompleted } from '../lib/notifications'
+import { sendNotification, notifyNearbyPros, notifyCleaningCompleted, notifyMissionEnRoute, notifyMissionSurPlace, notifyMissionStarted } from '../lib/notifications'
 import { compressImage } from '../lib/imageUtils'
+
+// Dériver le statut de mission (5 étapes) à partir des timestamps
+export function getMissionStatus(req) {
+  if (!req || !['confirmed', 'in_progress', 'completed'].includes(req.status)) return null
+  if (req.status === 'completed')    return { step: 5, key: 'completed',  label: 'Complété',  icon: '✅', time: req.updated_at }
+  if (req.mission_started_at)        return { step: 4, key: 'en_cours',   label: 'En cours',  icon: '🧹', time: req.mission_started_at }
+  if (req.mission_sur_place_at)      return { step: 3, key: 'sur_place',  label: 'Sur place', icon: '🏠', time: req.mission_sur_place_at }
+  if (req.mission_en_route_at)       return { step: 2, key: 'en_route',   label: 'En route',  icon: '🚗', time: req.mission_en_route_at }
+  return { step: 1, key: 'accepted', label: 'Accepté', icon: '🟡', time: req.access_sent_at || req.updated_at }
+}
 
 export function useRequests() {
   const { user, profile } = useAuth()
@@ -190,8 +200,22 @@ export function useRequests() {
 
     await updateChecklistItem(requestId, templateId, true, publicUrl)
 
-    // Vérifier si la checklist est 100% complétée
+    // Auto-démarrer la mission (1ère photo = "En cours")
     const req = requests.find(r => r.id === requestId)
+    if (req && !req.mission_started_at && ['confirmed', 'in_progress'].includes(req.status)) {
+      const now = new Date().toISOString()
+      await supabase.from('cleaning_requests')
+        .update({ mission_started_at: now, status: 'in_progress', updated_at: now })
+        .eq('id', requestId)
+        .is('mission_started_at', null)
+      notifyMissionStarted({
+        request: req,
+        chaletName: req.chalet?.name || 'votre chalet',
+        proName: profile?.first_name || 'Le professionnel',
+      })
+    }
+
+    // Vérifier si la checklist est 100% complétée
     if (req) {
       const totalTasks = req.chalet?.checklist_templates?.length || 0
       const completedBefore = req.checklist_completions?.filter(c => c.is_done && c.photo_url)?.length || 0
@@ -228,6 +252,37 @@ export function useRequests() {
         chaletName: req.chalet?.name,
         proName: profile?.first_name,
       })
+    }
+
+    await fetchRequests()
+  }
+
+  async function updateMissionStatus(requestId, statusKey) {
+    const req = requests.find(r => r.id === requestId)
+    if (!req) throw new Error('Demande introuvable')
+    const now = new Date().toISOString()
+    let updates = {}
+
+    if (statusKey === 'en_route') {
+      updates = { mission_en_route_at: now, updated_at: now }
+    } else if (statusKey === 'sur_place') {
+      updates = { mission_sur_place_at: now, status: 'in_progress', updated_at: now }
+    } else {
+      throw new Error('Statut invalide')
+    }
+
+    const { error } = await supabase.from('cleaning_requests')
+      .update(updates)
+      .eq('id', requestId)
+    if (error) throw error
+
+    // Notifier le proprio
+    const chaletName = req.chalet?.name || 'votre chalet'
+    const proName = profile?.first_name || 'Le professionnel'
+    if (statusKey === 'en_route') {
+      notifyMissionEnRoute({ request: req, chaletName, proName })
+    } else if (statusKey === 'sur_place') {
+      notifyMissionSurPlace({ request: req, chaletName, proName })
     }
 
     await fetchRequests()
@@ -312,5 +367,5 @@ export function useRequests() {
     })
   }
 
-  return { requests, loading, createRequest, acceptOffer, submitOffer, submitReview, completeRequest, updateChecklistItem, uploadRoomPhoto, updateOffer, updateRequest, getOpenRequestsNearby, refetch: fetchRequests }
+  return { requests, loading, createRequest, acceptOffer, submitOffer, submitReview, completeRequest, updateMissionStatus, updateChecklistItem, uploadRoomPhoto, updateOffer, updateRequest, getOpenRequestsNearby, refetch: fetchRequests }
 }

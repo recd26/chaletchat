@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useChalets } from '../hooks/useChalets'
-import { useRequests } from '../hooks/useRequests'
+import { useRequests, getMissionStatus } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages, CheckCircle, Camera, Home, Bed, Bath } from 'lucide-react'
@@ -267,7 +267,7 @@ export default function Dashboard() {
                         <span className={`pill-${req.status === 'open' ? (offers.length > 0 ? 'coral' : 'pending') : 'active'}`}>
                           {req.status === 'open'
                             ? (offers.length > 0 ? `📨 En révision (${offers.length})` : '⏳ En attente')
-                            : req.status === 'confirmed' ? '✅ Confirmé' : req.status}
+                            : ['confirmed', 'in_progress'].includes(req.status) ? (() => { const ms = getMissionStatus(req); return ms ? `${ms.icon} ${ms.label}` : '✅ Confirmé' })() : req.status}
                         </span>
                       ) : (
                         <span className="pill-done">Aucune demande active</span>
@@ -375,7 +375,7 @@ export default function Dashboard() {
                       )}
 
                       {/* Pro accepté (demande confirmée) */}
-                      {req.status === 'confirmed' && (() => {
+                      {['confirmed', 'in_progress'].includes(req.status) && (() => {
                         const accepted = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
                         return accepted ? (
                           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
@@ -398,7 +398,7 @@ export default function Dashboard() {
                       })()}
 
                       {/* Bouton terminer la mission manuellement (proprio) */}
-                      {req.status === 'confirmed' && (
+                      {['confirmed', 'in_progress'].includes(req.status) && (
                         <button
                           onClick={async () => {
                             if (!confirm('Confirmer la complétion et transférer à l\'historique ?')) return
@@ -420,7 +420,7 @@ export default function Dashboard() {
                       )}
 
                       {/* Bouton ouvrir / fermer la demande */}
-                      {req.status === 'confirmed' && total > 0 && (
+                      {['confirmed', 'in_progress'].includes(req.status) && total > 0 && (
                         <button
                           onClick={() => setOpenRequest(isOpen ? null : req.id)}
                           className="btn-primary w-full py-3 text-sm font-700 mb-3"
@@ -896,7 +896,7 @@ export default function Dashboard() {
           ) : (() => {
             const activeReqs = myRequests.filter(r => r.status !== 'completed')
             const openReqs = activeReqs.filter(r => r.status === 'open')
-            const confirmedReqs = activeReqs.filter(r => r.status === 'confirmed')
+            const confirmedReqs = activeReqs.filter(r => ['confirmed', 'in_progress'].includes(r.status))
             const totalOffers = openReqs.reduce((sum, r) => sum + (r.offers?.length || 0), 0)
 
             return (
@@ -932,7 +932,7 @@ export default function Dashboard() {
                       const acceptedPro = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
 
                       return (
-                        <div key={req.id} id={`request-${req.id}`} className={`card border ${req.status === 'confirmed' ? 'border-green-200' : 'border-coral/30'} ${highlightRequest === req.id ? 'ring-2 ring-coral ring-offset-2' : ''}`}>
+                        <div key={req.id} id={`request-${req.id}`} className={`card border ${['confirmed', 'in_progress'].includes(req.status) ? 'border-green-200' : 'border-coral/30'} ${highlightRequest === req.id ? 'ring-2 ring-coral ring-offset-2' : ''}`}>
                           {/* En-tête */}
                           <div className="flex justify-between items-start mb-3">
                             <div>
@@ -942,7 +942,7 @@ export default function Dashboard() {
                             <span className={`pill-${req.status === 'open' ? (offers.length > 0 ? 'coral' : 'pending') : 'active'}`}>
                               {req.status === 'open'
                                 ? (offers.length > 0 ? `📨 En révision (${offers.length})` : '⏳ En attente d\'offres')
-                                : '✅ Confirmé'}
+                                : (() => { const ms = getMissionStatus(req); return ms ? `${ms.icon} ${ms.label}` : '✅ Confirmé' })()}
                             </span>
                           </div>
 
@@ -1043,8 +1043,8 @@ export default function Dashboard() {
                             </div>
                           )}
 
-                          {/* Pro confirmé */}
-                          {req.status === 'confirmed' && acceptedPro && (
+                          {/* Pro confirmé + Timeline mission */}
+                          {['confirmed', 'in_progress'].includes(req.status) && acceptedPro && (
                             <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -1065,6 +1065,41 @@ export default function Dashboard() {
                                   </button>
                                 </div>
                               </div>
+
+                              {/* Timeline de mission */}
+                              {(() => {
+                                const ms = getMissionStatus(req)
+                                if (!ms) return null
+                                const steps = [
+                                  { key: 'accepted',  icon: '🟡', label: 'Accepté' },
+                                  { key: 'en_route',  icon: '🚗', label: 'En route' },
+                                  { key: 'sur_place', icon: '🏠', label: 'Sur place' },
+                                  { key: 'en_cours',  icon: '🧹', label: 'En cours' },
+                                  { key: 'completed', icon: '✅', label: 'Complété' },
+                                ]
+                                return (
+                                  <div className="mt-3 pt-3 border-t border-green-200">
+                                    <div className="flex items-center gap-0.5 mb-1.5">
+                                      {steps.map((s, i) => (
+                                        <div key={s.key} className="flex items-center flex-1">
+                                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
+                                            i + 1 < ms.step ? 'bg-teal text-white' :
+                                            i + 1 === ms.step ? 'bg-teal text-white ring-2 ring-teal/30' :
+                                            'bg-gray-200 text-gray-300'
+                                          }`}>{s.icon}</div>
+                                          {i < steps.length - 1 && (
+                                            <div className={`flex-1 h-0.5 mx-0.5 ${i + 1 < ms.step ? 'bg-teal' : 'bg-gray-200'}`} />
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <p className="text-xs text-green-700 font-600">
+                                      {ms.icon} {acceptedPro.pro?.first_name || 'Pro'} — {ms.label}
+                                      {ms.time && ` à ${new Date(ms.time).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
+                                    </p>
+                                  </div>
+                                )
+                              })()}
                             </div>
                           )}
 

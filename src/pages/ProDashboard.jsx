@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useRequests } from '../hooks/useRequests'
+import { useRequests, getMissionStatus } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload, ChevronDown, ChevronUp } from 'lucide-react'
@@ -16,7 +16,7 @@ const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missi
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
-  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, completeRequest, submitReview, updateOffer } = useRequests()
+  const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, completeRequest, updateMissionStatus, submitReview, updateOffer } = useRequests()
   const { toasts, toast } = useToast()
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -81,6 +81,7 @@ export default function ProDashboard() {
   const [savingOffer, setSavingOffer] = useState(false)
   const [expandedReq, setExpandedReq] = useState(null)
   const [expiredRequest, setExpiredRequest] = useState(null) // demande expirée (via notification)
+  const [updatingStatus, setUpdatingStatus] = useState(null) // requestId en cours de mise à jour
   // Bancaire
   const [editingBank, setEditingBank] = useState(false)
   const [bankForm, setBankForm] = useState({})
@@ -251,18 +252,91 @@ export default function ProDashboard() {
                 const pct = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0
                 const isOpen = openMission === req.id
 
+                const ms = getMissionStatus(req)
+                const MISSION_STEPS = [
+                  { key: 'accepted',  icon: '🟡', label: 'Accepté' },
+                  { key: 'en_route',  icon: '🚗', label: 'En route' },
+                  { key: 'sur_place', icon: '🏠', label: 'Sur place' },
+                  { key: 'en_cours',  icon: '🧹', label: 'En cours' },
+                  { key: 'completed', icon: '✅', label: 'Complété' },
+                ]
+                const currentStep = ms?.step || 1
+
                 return (
                   <div key={req.id} className="card mb-4 border-teal border">
                     {/* En-tête compact (toujours visible) */}
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <span className="pill-active mb-2 inline-block">🔵 Mission en cours</span>
+                        <span className="pill-active mb-2 inline-block">{ms?.icon || '🔵'} {ms?.label || 'Mission'}</span>
                         <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
                         <p className="text-xs text-gray-400">
                           {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''} à {req.scheduled_time}
                         </p>
                       </div>
                       <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
+                    </div>
+
+                    {/* Timeline de mission */}
+                    <div className="mb-3 bg-gray-50 rounded-xl px-3 py-3">
+                      <div className="flex items-center gap-0.5 mb-2">
+                        {MISSION_STEPS.map((s, i) => (
+                          <div key={s.key} className="flex items-center flex-1">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0 ${
+                              i + 1 < currentStep ? 'bg-teal text-white' :
+                              i + 1 === currentStep ? 'bg-teal text-white ring-2 ring-teal/30' :
+                              'bg-gray-200 text-gray-400'
+                            }`}>
+                              {i + 1 <= currentStep ? s.icon : (i + 1)}
+                            </div>
+                            {i < MISSION_STEPS.length - 1 && (
+                              <div className={`flex-1 h-0.5 mx-0.5 ${i + 1 < currentStep ? 'bg-teal' : 'bg-gray-200'}`} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-500 font-600">
+                        {ms?.icon} {ms?.label}
+                        {ms?.time && ` — ${new Date(ms.time).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
+                      </p>
+
+                      {/* Boutons d'action selon l'étape */}
+                      {currentStep === 1 && (
+                        <button
+                          onClick={async () => {
+                            setUpdatingStatus(req.id)
+                            try {
+                              await updateMissionStatus(req.id, 'en_route')
+                              toast('🚗 Statut mis à jour : En route !', 'success')
+                            } catch (e) { toast('❌ ' + e.message, 'error') }
+                            finally { setUpdatingStatus(null) }
+                          }}
+                          disabled={updatingStatus === req.id}
+                          className="w-full mt-2 py-2.5 text-sm font-700 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-700 hover:bg-amber-100 transition-all disabled:opacity-50"
+                        >
+                          {updatingStatus === req.id ? '⏳ Mise à jour...' : '🚗 Je pars maintenant'}
+                        </button>
+                      )}
+                      {currentStep === 2 && (
+                        <button
+                          onClick={async () => {
+                            setUpdatingStatus(req.id)
+                            try {
+                              await updateMissionStatus(req.id, 'sur_place')
+                              toast('🏠 Statut mis à jour : Sur place !', 'success')
+                            } catch (e) { toast('❌ ' + e.message, 'error') }
+                            finally { setUpdatingStatus(null) }
+                          }}
+                          disabled={updatingStatus === req.id}
+                          className="w-full mt-2 py-2.5 text-sm font-700 rounded-xl bg-blue-50 border-2 border-blue-400 text-blue-700 hover:bg-blue-100 transition-all disabled:opacity-50"
+                        >
+                          {updatingStatus === req.id ? '⏳ Mise à jour...' : '🏠 Je suis arrivé(e)'}
+                        </button>
+                      )}
+                      {currentStep === 3 && (
+                        <p className="mt-2 text-xs text-teal font-600 bg-teal/10 rounded-lg px-3 py-2">
+                          📸 Prenez la première photo de la checklist pour démarrer le ménage
+                        </p>
+                      )}
                     </div>
 
                     {/* Barre de progression (toujours visible) */}

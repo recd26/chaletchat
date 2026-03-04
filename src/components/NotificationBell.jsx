@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Check, MessageSquare, DollarSign, CheckCircle, XCircle, MapPin, Sparkles } from 'lucide-react'
+import { Bell, Check, MessageSquare, DollarSign, CheckCircle, XCircle, MapPin, Sparkles, Navigation, Home, Brush } from 'lucide-react'
 import { useNotifications } from '../hooks/useNotifications'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../hooks/useToast'
@@ -13,6 +13,9 @@ const ICON_MAP = {
   new_message:         { icon: MessageSquare, color: 'text-blue-500' },
   new_request_nearby:  { icon: MapPin,       color: 'text-teal' },
   cleaning_completed:  { icon: Sparkles,     color: 'text-green-500' },
+  mission_en_route:    { icon: Navigation,   color: 'text-amber-500' },
+  mission_sur_place:   { icon: Home,         color: 'text-blue-500' },
+  mission_en_cours:    { icon: Brush,        color: 'text-teal' },
 }
 
 // Navigation : type → { path, tab }
@@ -24,6 +27,10 @@ const NAV_MAP = {
   new_request_nearby: { path: '/pro', tab: 0 },         // Demandes à proximité
   offer_accepted:     { path: '/pro', tab: 0 },
   offer_declined:     { path: '/pro', tab: 0 },
+  // Statuts mission → Proprio Demandes
+  mission_en_route:   { path: '/dashboard', tab: 2 },
+  mission_sur_place:  { path: '/dashboard', tab: 2 },
+  mission_en_cours:   { path: '/dashboard', tab: 2 },
 }
 
 export default function NotificationBell() {
