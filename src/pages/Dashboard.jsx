@@ -899,11 +899,12 @@ export default function Dashboard() {
             const openReqs = activeReqs.filter(r => r.status === 'open')
             const confirmedReqs = activeReqs.filter(r => ['confirmed', 'in_progress'].includes(r.status))
             const totalOffers = openReqs.reduce((sum, r) => sum + (r.offers?.length || 0), 0)
+            const toReviewReqs = openReqs.filter(r => (r.offers?.length || 0) > 0)
 
             return (
               <div>
                 {/* Stats demandes — clic = filtre, double-clic = enlever filtre */}
-                <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="grid grid-cols-4 gap-3 mb-6">
                   <button
                     onClick={() => setRequestFilter(f => f === 'open' ? null : 'open')}
                     onDoubleClick={() => setRequestFilter(null)}
@@ -928,6 +929,14 @@ export default function Dashboard() {
                     <p className="text-2xl font-800 text-amber-500">{totalOffers}</p>
                     <p className="text-xs text-gray-400 mt-1">Offres reçues</p>
                   </button>
+                  <button
+                    onClick={() => setRequestFilter(f => f === 'review' ? null : 'review')}
+                    onDoubleClick={() => setRequestFilter(null)}
+                    className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'review' ? 'border-2 border-purple-500 ring-1 ring-purple-500/20' : ''}`}
+                  >
+                    <p className="text-2xl font-800 text-purple-500">{toReviewReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">À réviser</p>
+                  </button>
                 </div>
 
                 {(() => {
@@ -935,6 +944,7 @@ export default function Dashboard() {
                     : requestFilter === 'open' ? openReqs
                     : requestFilter === 'confirmed' ? confirmedReqs
                     : requestFilter === 'offers' ? openReqs.filter(r => (r.offers?.length || 0) > 0)
+                    : requestFilter === 'review' ? toReviewReqs
                     : activeReqs
                   return displayReqs.length === 0 ? (
                   <div className="card text-center py-12">
