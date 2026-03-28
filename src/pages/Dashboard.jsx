@@ -264,7 +264,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* B. 4 stats → navigation vers Demandes */}
-                <div className="grid grid-cols-4 gap-3 mb-6">
+                <div className="grid grid-cols-3 gap-3 mb-6">
                   <button onClick={() => { setRequestFilter('open'); setTab(2) }}
                     className="card text-center py-4 cursor-pointer hover:border-coral transition-all">
                     <p className="text-2xl font-800 text-coral">{waitingReqs.length}</p>
@@ -274,11 +274,6 @@ export default function Dashboard() {
                     className="card text-center py-4 cursor-pointer hover:border-teal transition-all">
                     <p className="text-2xl font-800 text-teal">{confirmedReqs.length}</p>
                     <p className="text-xs text-gray-400 mt-1">Confirmées</p>
-                  </button>
-                  <button onClick={() => { setRequestFilter('offers'); setTab(2) }}
-                    className="card text-center py-4 cursor-pointer hover:border-amber-500 transition-all">
-                    <p className="text-2xl font-800 text-amber-500">{acceptedReqs.length}</p>
-                    <p className="text-xs text-gray-400 mt-1">Acceptées</p>
                   </button>
                   <button onClick={() => { setRequestFilter('review'); setTab(2) }}
                     className="card text-center py-4 cursor-pointer hover:border-purple-500 transition-all">
