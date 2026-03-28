@@ -927,7 +927,7 @@ export default function Dashboard() {
                     className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'offers' ? 'border-2 border-amber-500 ring-1 ring-amber-500/20' : ''}`}
                   >
                     <p className="text-2xl font-800 text-amber-500">{totalOffers}</p>
-                    <p className="text-xs text-gray-400 mt-1">Offres reçues</p>
+                    <p className="text-xs text-gray-400 mt-1">Acceptées</p>
                   </button>
                   <button
                     onClick={() => setRequestFilter(f => f === 'review' ? null : 'review')}
