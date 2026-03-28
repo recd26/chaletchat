@@ -55,27 +55,36 @@ export function useNotifications() {
 
   async function markAsRead(notificationId) {
     const now = new Date().toISOString()
+    // Optimistic update
+    setNotifications(prev =>
+      prev.map(n => n.id === notificationId ? { ...n, read_at: now } : n)
+    )
     const { error } = await supabase
       .from('notifications')
       .update({ read_at: now })
       .eq('id', notificationId)
-    if (error) throw error
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, read_at: now } : n)
-    )
+    if (error) {
+      console.error('markAsRead failed:', error)
+      await fetchNotifications()
+    }
   }
 
   async function markAllAsRead() {
     const now = new Date().toISOString()
+    // Optimistic update — update UI immediately
+    setNotifications(prev =>
+      prev.map(n => n.read_at ? n : { ...n, read_at: now })
+    )
+    const unreadIds = notifications.filter(n => !n.read_at).map(n => n.id)
+    if (unreadIds.length === 0) return
     const { error } = await supabase
       .from('notifications')
       .update({ read_at: now })
-      .eq('user_id', user.id)
-      .is('read_at', null)
-    if (error) throw error
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read_at: now }))
-    )
+      .in('id', unreadIds)
+    if (error) {
+      console.error('markAllAsRead failed:', error)
+      await fetchNotifications()
+    }
   }
 
   return {
