@@ -8,8 +8,7 @@ export function useNotifications() {
   const [loading, setLoading] = useState(true)
   const channelRef = useRef(null)
 
-  // Adapté au schéma : is_read (boolean) au lieu de read_at (timestamptz)
-  const unreadCount = notifications.filter(n => !n.is_read).length
+  const unreadCount = notifications.filter(n => !n.read_at).length
 
   useEffect(() => {
     if (!user) return
@@ -55,25 +54,27 @@ export function useNotifications() {
   }
 
   async function markAsRead(notificationId) {
+    const now = new Date().toISOString()
     const { error } = await supabase
       .from('notifications')
-      .update({ is_read: true })
+      .update({ read_at: now })
       .eq('id', notificationId)
     if (error) throw error
     setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
+      prev.map(n => n.id === notificationId ? { ...n, read_at: now } : n)
     )
   }
 
   async function markAllAsRead() {
+    const now = new Date().toISOString()
     const { error } = await supabase
       .from('notifications')
-      .update({ is_read: true })
+      .update({ read_at: now })
       .eq('user_id', user.id)
-      .eq('is_read', false)
+      .is('read_at', null)
     if (error) throw error
     setNotifications(prev =>
-      prev.map(n => ({ ...n, is_read: true }))
+      prev.map(n => ({ ...n, read_at: now }))
     )
   }
 

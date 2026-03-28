@@ -3,7 +3,7 @@ import { haversineDistance } from './geocode'
 
 /**
  * Envoie une notification in-app + email
- * Schéma : notifications(id, user_id, title, message, type, is_read, data, created_at)
+ * Schéma : notifications(id, user_id, type, title, body, request_id, sender_id, read_at, created_at)
  */
 export async function sendNotification({ userId, type, title, body, requestId, senderId }) {
   if (!userId || !title) {
@@ -11,26 +11,17 @@ export async function sendNotification({ userId, type, title, body, requestId, s
     return
   }
 
-  // 1. Notification in-app — essai avec data JSONB, fallback sans
+  // 1. Notification in-app
   const row = {
     user_id: userId,
-    type: type || 'info',
+    type: type || 'new_message',
     title,
-    message: body || title,
+    body: body || title,
+    request_id: requestId || null,
+    sender_id: senderId || null,
   }
 
-  // Tenter avec le champ data (JSONB) s'il existe dans la table
-  let { error } = await supabase.from('notifications').insert({
-    ...row,
-    data: { request_id: requestId, sender_id: senderId },
-  })
-
-  // Si échec (ex: colonne data inexistante), réessayer sans data
-  if (error) {
-    console.warn('Notification insert avec data échoué, retry sans data:', error.message)
-    const retry = await supabase.from('notifications').insert(row)
-    error = retry.error
-  }
+  let { error } = await supabase.from('notifications').insert(row)
 
   if (error) {
     console.error('❌ NOTIFICATION ECHEC FINAL:', error.message, error.details, error.hint, row)

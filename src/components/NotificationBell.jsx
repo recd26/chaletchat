@@ -73,21 +73,14 @@ export default function NotificationBell() {
   }
 
   function handleClickNotif(notif) {
-    if (!notif.is_read) markAsRead(notif.id)
-
-    // Extraire request_id du champ data (peut être objet ou string JSON)
-    let requestId = null
-    try {
-      const d = typeof notif.data === 'string' ? JSON.parse(notif.data) : notif.data
-      requestId = d?.request_id
-    } catch {}
+    if (!notif.read_at) markAsRead(notif.id)
 
     // Navigation vers la demande
     const nav = NAV_MAP[notif.type]
     if (nav) {
       const params = new URLSearchParams()
       params.set('tab', String(nav.tab))
-      if (requestId) params.set('request', requestId)
+      if (notif.request_id) params.set('request', notif.request_id)
       navigate(`${nav.path}?${params.toString()}`)
       setOpen(false)
     }
@@ -136,7 +129,7 @@ export default function NotificationBell() {
                     key={notif.id}
                     onClick={() => handleClickNotif(notif)}
                     className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-all border-b border-gray-50 ${
-                      !notif.is_read ? 'bg-blue-50/40' : ''
+                      !notif.read_at ? 'bg-blue-50/40' : ''
                     }`}
                   >
                     <div className={`mt-0.5 ${color}`}>
@@ -144,12 +137,12 @@ export default function NotificationBell() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-600 text-gray-800 truncate">{notif.title}</p>
-                      {notif.message && (
-                        <p className="text-xs text-gray-400 truncate">{notif.message}</p>
+                      {notif.body && (
+                        <p className="text-xs text-gray-400 truncate">{notif.body}</p>
                       )}
                       <p className="text-[11px] text-gray-300 mt-0.5">{timeAgo(notif.created_at)}</p>
                     </div>
-                    {!notif.is_read && (
+                    {!notif.read_at && (
                       <div className="w-2 h-2 bg-coral rounded-full mt-2 flex-shrink-0" />
                     )}
                   </div>
