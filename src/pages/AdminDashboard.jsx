@@ -28,10 +28,11 @@ export default function AdminDashboard() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'pro')
         .order('created_at', { ascending: false })
       if (error) throw error
-      setPros(data || [])
+      // Exclure les admins de la liste
+      const filtered = (data || []).filter(p => !ADMIN_EMAILS.includes(p.email?.toLowerCase()))
+      setPros(filtered)
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
     } finally {
@@ -53,13 +54,15 @@ export default function AdminDashboard() {
     }
   }
 
-  const filtered = filter === 'all' ? pros : pros.filter(p => p.verif_status === filter)
+  // Traiter null/undefined comme 'pending' (comptes créés avant le système d'approbation)
+  const getStatus = (p) => p.verif_status || 'pending'
+  const filtered = filter === 'all' ? pros : pros.filter(p => getStatus(p) === filter)
 
   const counts = {
     all: pros.length,
-    pending: pros.filter(p => p.verif_status === 'pending').length,
-    approved: pros.filter(p => p.verif_status === 'approved').length,
-    rejected: pros.filter(p => p.verif_status === 'rejected').length,
+    pending: pros.filter(p => getStatus(p) === 'pending').length,
+    approved: pros.filter(p => getStatus(p) === 'approved').length,
+    rejected: pros.filter(p => getStatus(p) === 'rejected').length,
   }
 
   if (!isAdmin) {
@@ -78,7 +81,7 @@ export default function AdminDashboard() {
     <div className="max-w-5xl mx-auto px-6 py-9">
       <div className="mb-7">
         <h1 className="text-2xl font-800 text-gray-900 tracking-tight">Panneau d'administration 🛡️</h1>
-        <p className="text-sm text-gray-400 mt-1">Vérification des professionnel·le·s</p>
+        <p className="text-sm text-gray-400 mt-1">Approbation des nouveaux comptes</p>
       </div>
 
       {/* Stats */}
@@ -103,78 +106,96 @@ export default function AdminDashboard() {
       ) : filtered.length === 0 ? (
         <div className="card text-center py-10">
           <p className="text-3xl mb-2">📋</p>
-          <p className="font-700 text-gray-600">Aucun professionnel dans cette catégorie</p>
+          <p className="font-700 text-gray-600">Aucun utilisateur dans cette catégorie</p>
         </div>
       ) : (
         filtered.map(pro => (
           <div key={pro.id} className={`card mb-4 ${
-            pro.verif_status === 'pending' ? 'border-amber-300 border' :
-            pro.verif_status === 'approved' ? 'border-green-300 border' :
-            pro.verif_status === 'rejected' ? 'border-red-300 border' : ''
+            getStatus(pro) === 'pending' ? 'border-amber-300 border' :
+            getStatus(pro) === 'approved' ? 'border-green-300 border' :
+            getStatus(pro) === 'rejected' ? 'border-red-300 border' : ''
           }`}>
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-700 text-gray-900">
+                <h3 className="font-700 text-gray-900 flex items-center gap-2">
                   {pro.first_name} {pro.last_name}
+                  <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full ${
+                    pro.role === 'pro' ? 'bg-teal/10 text-teal border border-teal/20' : 'bg-coral/10 text-coral border border-coral/20'
+                  }`}>
+                    {pro.role === 'pro' ? '🧹 Pro' : '🏡 Proprio'}
+                  </span>
                 </h3>
                 <p className="text-xs text-gray-400">
-                  {pro.city || 'Ville inconnue'} • {pro.province || ''} • Rayon {pro.radius_km || 25} km
+                  {pro.city || 'Ville inconnue'} • {pro.province || ''}{pro.role === 'pro' ? ` • Rayon ${pro.radius_km || 25} km` : ''}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   📧 {pro.email || pro.id} • 📱 {pro.phone || 'N/A'}
                 </p>
               </div>
               <span className={`text-xs font-700 px-3 py-1.5 rounded-full ${
-                pro.verif_status === 'approved' ? 'bg-green-50 text-green-700 border border-green-200' :
-                pro.verif_status === 'rejected' ? 'bg-red-50 text-red-500 border border-red-200' :
+                getStatus(pro) === 'approved' ? 'bg-green-50 text-green-700 border border-green-200' :
+                getStatus(pro) === 'rejected' ? 'bg-red-50 text-red-500 border border-red-200' :
                 'bg-amber-50 text-amber-700 border border-amber-200'
               }`}>
-                {pro.verif_status === 'approved' ? '✅ Approuvé' :
-                 pro.verif_status === 'rejected' ? '❌ Refusé' : '⏳ En attente'}
+                {getStatus(pro) === 'approved' ? '✅ Approuvé' :
+                 getStatus(pro) === 'rejected' ? '❌ Refusé' : '⏳ En attente'}
               </span>
             </div>
 
-            {/* Infos pro */}
-            <div className="flex flex-wrap gap-2 text-xs mb-3">
-              {pro.experience && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">🕐 {pro.experience}</span>}
-              {pro.languages && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">🗣️ {pro.languages}</span>}
-              {pro.bio && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200 max-w-xs truncate">📝 {pro.bio}</span>}
-            </div>
+            {/* Infos pro (seulement pour les pros) */}
+            {pro.role === 'pro' && (
+              <div className="flex flex-wrap gap-2 text-xs mb-3">
+                {pro.experience && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">🕐 {pro.experience}</span>}
+                {pro.languages && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">🗣️ {pro.languages}</span>}
+                {pro.bio && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200 max-w-xs truncate">📝 {pro.bio}</span>}
+              </div>
+            )}
 
-            {/* Documents */}
-            <div className="flex gap-3 mb-3">
-              {pro.selfie_url ? (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
-                  <img src={pro.selfie_url} alt="Selfie" className="w-10 h-10 rounded-lg object-cover border border-green-300" />
-                  <div>
-                    <p className="text-xs font-600 text-green-700">🤳 Selfie</p>
-                    <button onClick={() => setViewDoc(pro.selfie_url)} className="text-xs text-teal font-600 hover:underline flex items-center gap-1">
-                      <Eye size={10} /> Agrandir
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <span className="text-xs bg-red-50 text-red-500 border border-red-200 px-3 py-2 rounded-xl">🤳 Selfie manquant</span>
-              )}
+            {/* Infos proprio */}
+            {pro.role === 'proprio' && (
+              <div className="flex flex-wrap gap-2 text-xs mb-3">
+                {pro.province && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">📍 {pro.province}</span>}
+                {pro.chalet_count && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">🏡 {pro.chalet_count}</span>}
+                {pro.location_type && <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded-lg border border-gray-200">📋 {pro.location_type}</span>}
+              </div>
+            )}
 
-              {pro.id_card_url ? (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
-                  <img src={pro.id_card_url} alt="ID" className="w-10 h-10 rounded-lg object-cover border border-green-300" />
-                  <div>
-                    <p className="text-xs font-600 text-green-700">🪪 Pièce d'identité</p>
-                    <button onClick={() => setViewDoc(pro.id_card_url)} className="text-xs text-teal font-600 hover:underline flex items-center gap-1">
-                      <Eye size={10} /> Agrandir
-                    </button>
+            {/* Documents (seulement pour les pros) */}
+            {pro.role === 'pro' && (
+              <div className="flex gap-3 mb-3">
+                {pro.selfie_url ? (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                    <img src={pro.selfie_url} alt="Selfie" className="w-10 h-10 rounded-lg object-cover border border-green-300" />
+                    <div>
+                      <p className="text-xs font-600 text-green-700">🤳 Selfie</p>
+                      <button onClick={() => setViewDoc(pro.selfie_url)} className="text-xs text-teal font-600 hover:underline flex items-center gap-1">
+                        <Eye size={10} /> Agrandir
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <span className="text-xs bg-red-50 text-red-500 border border-red-200 px-3 py-2 rounded-xl">🪪 ID manquante</span>
-              )}
-            </div>
+                ) : (
+                  <span className="text-xs bg-red-50 text-red-500 border border-red-200 px-3 py-2 rounded-xl">🤳 Selfie manquant</span>
+                )}
+
+                {pro.id_card_url ? (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                    <img src={pro.id_card_url} alt="ID" className="w-10 h-10 rounded-lg object-cover border border-green-300" />
+                    <div>
+                      <p className="text-xs font-600 text-green-700">🪪 Pièce d'identité</p>
+                      <button onClick={() => setViewDoc(pro.id_card_url)} className="text-xs text-teal font-600 hover:underline flex items-center gap-1">
+                        <Eye size={10} /> Agrandir
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-xs bg-red-50 text-red-500 border border-red-200 px-3 py-2 rounded-xl">🪪 ID manquante</span>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex gap-2">
-              {pro.verif_status !== 'approved' && (
+              {getStatus(pro) !== 'approved' && (
                 <button
                   onClick={() => updateVerifStatus(pro.id, 'approved')}
                   className="flex items-center gap-1.5 text-xs font-700 bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all"
@@ -182,7 +203,7 @@ export default function AdminDashboard() {
                   <CheckCircle size={14} /> Approuver
                 </button>
               )}
-              {pro.verif_status !== 'rejected' && (
+              {getStatus(pro) !== 'rejected' && (
                 <button
                   onClick={() => updateVerifStatus(pro.id, 'rejected')}
                   className="flex items-center gap-1.5 text-xs font-700 bg-red-500 text-white px-4 py-2 rounded-xl hover:bg-red-600 transition-all"
@@ -190,7 +211,7 @@ export default function AdminDashboard() {
                   <XCircle size={14} /> Refuser
                 </button>
               )}
-              {pro.verif_status !== 'pending' && (
+              {getStatus(pro) !== 'pending' && (
                 <button
                   onClick={() => updateVerifStatus(pro.id, 'pending')}
                   className="flex items-center gap-1.5 text-xs font-600 bg-gray-100 text-gray-500 px-4 py-2 rounded-xl hover:bg-gray-200 transition-all"

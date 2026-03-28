@@ -16,9 +16,16 @@ export default function ProtectedRoute({ children, requiredRole = null, adminOnl
 
   if (!user) return <Navigate to="/login" replace />
 
+  const isAdmin = ADMIN_EMAILS.includes(user.email?.toLowerCase())
+
   // Protection admin — seuls les emails autorisés peuvent accéder
-  if (adminOnly && !ADMIN_EMAILS.includes(user.email?.toLowerCase())) {
+  if (adminOnly && !isAdmin) {
     return <Navigate to={profile?.role === 'proprio' ? '/dashboard' : '/pro'} replace />
+  }
+
+  // Bloquer l'accès si le compte n'est pas approuvé par l'admin (sauf admin)
+  if (!adminOnly && !isAdmin && profile?.verif_status !== 'approved') {
+    return <Navigate to="/en-attente" replace />
   }
 
   if (requiredRole && profile?.role !== requiredRole) {

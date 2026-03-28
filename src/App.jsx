@@ -14,7 +14,8 @@ import Confidentialite  from './pages/Confidentialite'
 import AdminDashboard   from './pages/AdminDashboard'
 import NewChalet    from './pages/NewChalet'
 import EditChalet   from './pages/EditChalet'
-import NewRequest   from './pages/NewRequest'
+import NewRequest       from './pages/NewRequest'
+import PendingApproval  from './pages/PendingApproval'
 
 // Redirige après connexion selon le rôle
 function RoleRedirect() {
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="/paiement"  element={<Paiement />} />
         <Route path="/conditions" element={<Conditions />} />
         <Route path="/confidentialite" element={<Confidentialite />} />
+        <Route path="/en-attente" element={<PendingApproval />} />
 
         {/* Admin — réservé aux emails autorisés */}
         <Route path="/admin" element={

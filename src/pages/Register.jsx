@@ -135,6 +135,7 @@ export default function Register() {
         firstName,
         lastName,
         phone,
+        verif_status: 'pending', // Tous les comptes doivent être approuvés par l'admin
         // Profil pro
         ...(role === 'pro' && {
           address: proAddress,
@@ -150,7 +151,6 @@ export default function Register() {
           bio,
           ...(selfieUrl && { selfie_url: selfieUrl }),
           ...(idCardUrl && { id_card_url: idCardUrl }),
-          ...(selfieUrl && idCardUrl && { verif_status: 'pending' }),
         }),
         // Profil proprio
         ...(role === 'proprio' && {
@@ -159,8 +159,8 @@ export default function Register() {
           location_type: locationType,
         }),
       })
-      toast('🎉 Compte créé ! Bienvenue sur ChaletProp !', 'success')
-      setTimeout(() => navigate(role === 'proprio' ? '/dashboard' : '/pro'), 1200)
+      toast('🎉 Compte créé ! En attente d\'approbation par l\'administrateur.', 'success')
+      setTimeout(() => navigate('/en-attente'), 1200)
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
     } finally {
