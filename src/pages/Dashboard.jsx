@@ -897,6 +897,7 @@ export default function Dashboard() {
           ) : (() => {
             const activeReqs = myRequests.filter(r => r.status !== 'completed')
             const openReqs = activeReqs.filter(r => r.status === 'open')
+            const waitingReqs = openReqs.filter(r => !r.offers || r.offers.length === 0)
             const confirmedReqs = activeReqs.filter(r => ['confirmed', 'in_progress'].includes(r.status))
             const acceptedReqs = activeReqs.filter(r => r.assigned_pro_id)
             const toReviewReqs = openReqs.filter(r => (r.offers?.length || 0) > 0)
@@ -910,7 +911,7 @@ export default function Dashboard() {
                     onDoubleClick={() => setRequestFilter(null)}
                     className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'open' ? 'border-2 border-coral ring-1 ring-coral/20' : ''}`}
                   >
-                    <p className="text-2xl font-800 text-coral">{openReqs.length}</p>
+                    <p className="text-2xl font-800 text-coral">{waitingReqs.length}</p>
                     <p className="text-xs text-gray-400 mt-1">En attente</p>
                   </button>
                   <button
@@ -941,7 +942,7 @@ export default function Dashboard() {
 
                 {(() => {
                   const displayReqs = requestFilter === null ? activeReqs
-                    : requestFilter === 'open' ? openReqs
+                    : requestFilter === 'open' ? waitingReqs
                     : requestFilter === 'confirmed' ? confirmedReqs
                     : requestFilter === 'offers' ? acceptedReqs
                     : requestFilter === 'review' ? toReviewReqs
