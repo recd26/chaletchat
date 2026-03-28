@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [reviewHover, setReviewHover] = useState({}) // { [requestId]: hoverStar }
   const [submittingReview, setSubmittingReview] = useState(null)
   const [completing, setCompleting] = useState(null)
+  const [requestFilter, setRequestFilter] = useState(null) // null | 'open' | 'confirmed' | 'offers'
   const [expandedAccess, setExpandedAccess] = useState({}) // { chaletId: true/false }
   const [editingAccess, setEditingAccess] = useState(null) // chalet id
   const [accessForm, setAccessForm] = useState({})
@@ -901,32 +902,50 @@ export default function Dashboard() {
 
             return (
               <div>
-                {/* Stats demandes */}
+                {/* Stats demandes — clic = filtre, double-clic = enlever filtre */}
                 <div className="grid grid-cols-3 gap-3 mb-6">
-                  <div className="card text-center py-4">
+                  <button
+                    onClick={() => setRequestFilter(f => f === 'open' ? null : 'open')}
+                    onDoubleClick={() => setRequestFilter(null)}
+                    className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'open' ? 'border-2 border-coral ring-1 ring-coral/20' : ''}`}
+                  >
                     <p className="text-2xl font-800 text-coral">{openReqs.length}</p>
                     <p className="text-xs text-gray-400 mt-1">En attente</p>
-                  </div>
-                  <div className="card text-center py-4">
+                  </button>
+                  <button
+                    onClick={() => setRequestFilter(f => f === 'confirmed' ? null : 'confirmed')}
+                    onDoubleClick={() => setRequestFilter(null)}
+                    className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'confirmed' ? 'border-2 border-teal ring-1 ring-teal/20' : ''}`}
+                  >
                     <p className="text-2xl font-800 text-teal">{confirmedReqs.length}</p>
                     <p className="text-xs text-gray-400 mt-1">Confirmées</p>
-                  </div>
-                  <div className="card text-center py-4">
+                  </button>
+                  <button
+                    onClick={() => setRequestFilter(f => f === 'offers' ? null : 'offers')}
+                    onDoubleClick={() => setRequestFilter(null)}
+                    className={`card text-center py-4 transition-all cursor-pointer ${requestFilter === 'offers' ? 'border-2 border-amber-500 ring-1 ring-amber-500/20' : ''}`}
+                  >
                     <p className="text-2xl font-800 text-amber-500">{totalOffers}</p>
                     <p className="text-xs text-gray-400 mt-1">Offres reçues</p>
-                  </div>
+                  </button>
                 </div>
 
-                {activeReqs.length === 0 ? (
+                {(() => {
+                  const displayReqs = requestFilter === null ? activeReqs
+                    : requestFilter === 'open' ? openReqs
+                    : requestFilter === 'confirmed' ? confirmedReqs
+                    : requestFilter === 'offers' ? openReqs.filter(r => (r.offers?.length || 0) > 0)
+                    : activeReqs
+                  return displayReqs.length === 0 ? (
                   <div className="card text-center py-12">
-                    <div className="text-4xl mb-3">📋</div>
-                    <p className="font-700 text-gray-700 mb-2">Aucune demande active</p>
-                    <p className="text-sm text-gray-400 mb-5">Créez une demande de ménage pour recevoir des offres.</p>
-                    <button onClick={handleNewRequest} className="btn-primary">+ Nouvelle demande</button>
+                    <div className="text-4xl mb-3">{requestFilter ? '🔍' : '📋'}</div>
+                    <p className="font-700 text-gray-700 mb-2">{requestFilter ? 'Aucune demande dans ce filtre' : 'Aucune demande active'}</p>
+                    <p className="text-sm text-gray-400 mb-5">{requestFilter ? 'Double-cliquez sur le filtre pour voir toutes les demandes.' : 'Créez une demande de ménage pour recevoir des offres.'}</p>
+                    {!requestFilter && <button onClick={handleNewRequest} className="btn-primary">+ Nouvelle demande</button>}
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {activeReqs.map(req => {
+                    {displayReqs.map(req => {
                       const chalet = chalets.find(c => c.id === req.chalet_id) || req.chalet
                       const offers = req.offers || []
                       const acceptedPro = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
@@ -1161,7 +1180,8 @@ export default function Dashboard() {
                       )
                     })}
                   </div>
-                )}
+                )
+                })()}
               </div>
             )
           })()}
