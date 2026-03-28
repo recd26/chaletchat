@@ -228,7 +228,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* ── Onglet 0 : Mes chalets ── */}
+      {/* ── Onglet 0 : Tableau de bord (synthèse) ── */}
       {tab === 0 && (
         <div>
           {(loadChalets || loadReqs) ? (
@@ -240,415 +240,166 @@ export default function Dashboard() {
               <p className="text-sm text-gray-400 mb-5">Ajoutez votre premier chalet pour commencer.</p>
               <Link to="/nouveau-chalet" className="btn-primary inline-block">Ajouter un chalet</Link>
             </div>
-          ) : (
-            chalets.map(chalet => {
-              const chaletReqs = myRequests.filter(r => r.chalet_id === chalet.id)
-              const req = chaletReqs.find(r => r.status !== 'completed') || null
-              const offers = req?.offers || []
-              const tasks = req?.chalet?.checklist_templates || chalet.checklist_templates || []
-              const completions = req?.checklist_completions || []
-              const done = completions.filter(c => c.is_done && c.photo_url).length
-              const total = tasks.length
-              const pct = total > 0 ? Math.round(done / total * 100) : 0
-              const isOpen = openRequest === req?.id
+          ) : (() => {
+            const activeReqs = myRequests.filter(r => r.status !== 'completed')
+            const openReqs = activeReqs.filter(r => r.status === 'open')
+            const waitingReqs = openReqs.filter(r => !r.offers || r.offers.length === 0)
+            const confirmedReqs = activeReqs.filter(r => ['confirmed', 'in_progress'].includes(r.status))
+            const acceptedReqs = activeReqs.filter(r => r.assigned_pro_id)
+            const toReviewReqs = openReqs.filter(r => (r.offers?.length || 0) > 0)
+            const nextMission = [...confirmedReqs].sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date))[0] || null
+            const unreviewed = completedRequests.filter(r => !r.reviews?.some(rv => rv.reviewer_id === profile?.id))
+            const idleChalets = chalets.filter(c => !activeReqs.some(r => r.chalet_id === c.id))
 
-              return (
-                <div key={chalet.id} className="card mb-4">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="font-700 text-gray-900">🏔 {chalet.name}</h3>
-                      <p className="text-xs text-gray-400 mt-0.5">{chalet.city} • {chalet.bedrooms} ch. • {chalet.bathrooms} sdb</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link to={`/chalet/${chalet.id}/editer`}
-                        className="text-xs font-600 text-gray-400 hover:text-coral border border-gray-200 rounded-lg px-2.5 py-1.5 transition-all">
-                        ✏️ Modifier
-                      </Link>
-                      {req ? (
-                        <span className={`pill-${req.status === 'open' ? (offers.length > 0 ? 'coral' : 'pending') : 'active'}`}>
-                          {req.status === 'open'
-                            ? (offers.length > 0 ? `📨 En révision (${offers.length})` : '⏳ En attente')
-                            : ['confirmed', 'in_progress'].includes(req.status) ? (() => { const ms = getMissionStatus(req); return ms ? `${ms.icon} ${ms.label}` : '✅ Confirmé' })() : req.status}
-                        </span>
-                      ) : (
-                        <span className="pill-done">Aucune demande active</span>
+            return (
+              <div>
+                {/* A. Bienvenue */}
+                <div className="mb-6">
+                  <h2 className="text-xl font-800 text-gray-900">
+                    Bonjour {profile?.first_name} !
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {new Date().toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* B. 4 stats → navigation vers Demandes */}
+                <div className="grid grid-cols-4 gap-3 mb-6">
+                  <button onClick={() => { setRequestFilter('open'); setTab(2) }}
+                    className="card text-center py-4 cursor-pointer hover:border-coral transition-all">
+                    <p className="text-2xl font-800 text-coral">{waitingReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">En attente</p>
+                  </button>
+                  <button onClick={() => { setRequestFilter('confirmed'); setTab(2) }}
+                    className="card text-center py-4 cursor-pointer hover:border-teal transition-all">
+                    <p className="text-2xl font-800 text-teal">{confirmedReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">Confirmées</p>
+                  </button>
+                  <button onClick={() => { setRequestFilter('offers'); setTab(2) }}
+                    className="card text-center py-4 cursor-pointer hover:border-amber-500 transition-all">
+                    <p className="text-2xl font-800 text-amber-500">{acceptedReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">Acceptées</p>
+                  </button>
+                  <button onClick={() => { setRequestFilter('review'); setTab(2) }}
+                    className="card text-center py-4 cursor-pointer hover:border-purple-500 transition-all">
+                    <p className="text-2xl font-800 text-purple-500">{toReviewReqs.length}</p>
+                    <p className="text-xs text-gray-400 mt-1">À réviser</p>
+                  </button>
+                </div>
+
+                {/* C. Prochaine mission */}
+                {nextMission && (() => {
+                  const chalet = chalets.find(c => c.id === nextMission.chalet_id) || nextMission.chalet
+                  const acceptedOffer = nextMission.offers?.find(o => o.pro_id === nextMission.assigned_pro_id)
+                  const ms = getMissionStatus(nextMission)
+                  const steps = [
+                    { key: 'accepted',  icon: '🟡', label: 'Accepté' },
+                    { key: 'en_route',  icon: '🚗', label: 'En route' },
+                    { key: 'sur_place', icon: '🏠', label: 'Sur place' },
+                    { key: 'en_cours',  icon: '🧹', label: 'En cours' },
+                    { key: 'completed', icon: '✅', label: 'Complété' },
+                  ]
+                  return (
+                    <div className="card border-teal/30 border mb-6">
+                      <div className="flex justify-between items-start mb-3">
+                        <p className="text-xs font-700 text-gray-400 uppercase tracking-wide">Prochaine mission</p>
+                        <button onClick={() => setTab(2)} className="text-xs font-600 text-coral hover:underline">
+                          Voir tout →
+                        </button>
+                      </div>
+                      <h3 className="font-700 text-gray-900">🏔 {chalet?.name}</h3>
+                      <p className="text-xs text-gray-400 mt-0.5">{chalet?.city}</p>
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-500 mt-3 mb-3">
+                        <span>🗓 {new Date(nextMission.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
+                        <span>⏰ {nextMission.scheduled_time}</span>
+                        {nextMission.agreed_price && <span className="text-teal font-700">💰 {nextMission.agreed_price} $</span>}
+                      </div>
+                      {acceptedOffer && (
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-sm text-white">🧹</div>
+                          <p className="text-sm font-700 text-gray-800">{acceptedOffer.pro?.first_name} {acceptedOffer.pro?.last_name}</p>
+                        </div>
                       )}
+                      {ms && (
+                        <div className="pt-3 border-t border-gray-200">
+                          <div className="flex items-center gap-0.5 mb-1.5">
+                            {steps.map((s, i) => (
+                              <div key={s.key} className="flex items-center flex-1">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
+                                  i + 1 < ms.step ? 'bg-teal text-white' :
+                                  i + 1 === ms.step ? 'bg-teal text-white ring-2 ring-teal/30' :
+                                  'bg-gray-200 text-gray-300'
+                                }`}>{s.icon}</div>
+                                {i < steps.length - 1 && (
+                                  <div className={`flex-1 h-0.5 mx-0.5 ${i + 1 < ms.step ? 'bg-teal' : 'bg-gray-200'}`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-teal font-600">
+                            {ms.icon} {acceptedOffer?.pro?.first_name || 'Pro'} — {ms.label}
+                            {ms.time && ` à ${new Date(ms.time).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* D. Alertes / Actions requises */}
+                {(toReviewReqs.length > 0 || unreviewed.length > 0 || idleChalets.length > 0) && (
+                  <div className="space-y-2 mb-6">
+                    <p className="text-xs font-700 text-gray-400 uppercase tracking-wide mb-2">Actions requises</p>
+                    {toReviewReqs.length > 0 && (
+                      <button onClick={() => { setRequestFilter('review'); setTab(2) }}
+                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-left text-sm text-amber-700 font-600 hover:bg-amber-100 transition-all">
+                        📨 {toReviewReqs.length} offre{toReviewReqs.length > 1 ? 's' : ''} à réviser
+                      </button>
+                    )}
+                    {unreviewed.length > 0 && (
+                      <button onClick={() => setTab(3)}
+                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-left text-sm text-amber-700 font-600 hover:bg-amber-100 transition-all">
+                        ⭐ {unreviewed.length} mission{unreviewed.length > 1 ? 's' : ''} terminée{unreviewed.length > 1 ? 's' : ''} sans avis
+                      </button>
+                    )}
+                    {idleChalets.length > 0 && (
+                      <button onClick={() => setTab(1)}
+                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-left text-sm text-amber-700 font-600 hover:bg-amber-100 transition-all">
+                        🏡 {idleChalets.length} chalet{idleChalets.length > 1 ? 's' : ''} sans demande active
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* E. Mes chalets (mini) */}
+                {chalets.length > 0 && (
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <p className="text-xs font-700 text-gray-400 uppercase tracking-wide">Mes chalets</p>
+                      <button onClick={() => setTab(1)} className="text-xs font-600 text-coral hover:underline">
+                        Voir tout →
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {chalets.map(c => {
+                        const hasActive = activeReqs.some(r => r.chalet_id === c.id)
+                        return (
+                          <button key={c.id} onClick={() => setTab(1)}
+                            className="card p-4 text-left hover:border-coral transition-all cursor-pointer">
+                            <p className="font-700 text-gray-900 text-sm truncate">🏔 {c.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{c.city}</p>
+                            <span className={`mt-2 inline-block ${hasActive ? 'pill-active' : 'pill-done'}`}>
+                              {hasActive ? '📋 Active' : 'Disponible'}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-
-                  {/* Lien vers historique si missions complétées */}
-                  {!req && chaletReqs.some(r => r.status === 'completed') && (
-                    <button
-                      onClick={() => setTab(3)}
-                      className="w-full py-3 text-sm font-600 text-teal bg-teal/5 border border-teal/20 rounded-xl hover:bg-teal/10 transition-all mb-3"
-                    >
-                      📋 {chaletReqs.filter(r => r.status === 'completed').length} mission{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} complétée{chaletReqs.filter(r => r.status === 'completed').length > 1 ? 's' : ''} — Voir l'historique
-                    </button>
-                  )}
-
-                  {req && (
-                    <>
-                      {/* Info demande */}
-                      <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
-                        <span>🗓 {new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' })}</span>
-                        <span>⏰ {req.scheduled_time}</span>
-                        {req.estimated_hours && <span>⏱ ~{req.estimated_hours}h</span>}
-                        {req.agreed_price && <span className="text-teal font-700">💰 {req.agreed_price} $</span>}
-                        {req.status === 'open' && (
-                          <button onClick={() => startEditRequest(req)}
-                            className="text-coral font-600 hover:underline ml-auto">✏️ Modifier</button>
-                        )}
-                      </div>
-
-                      {/* Formulaire modification demande (si ouverte) */}
-                      {editingRequest === req.id && (
-                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3">
-                          <h4 className="text-sm font-700 text-gray-700 mb-3">✏️ Modifier la demande</h4>
-                          <div className="grid grid-cols-2 gap-3 mb-3">
-                            <div>
-                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Date *</label>
-                              <input type="date" className="input-field" value={editReqForm.scheduled_date}
-                                onChange={e => setEditReqForm(f => ({ ...f, scheduled_date: e.target.value }))} />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure *</label>
-                              <input type="time" className="input-field" value={editReqForm.scheduled_time}
-                                onChange={e => setEditReqForm(f => ({ ...f, scheduled_time: e.target.value }))} />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3 mb-3">
-                            <div>
-                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Heure limite</label>
-                              <input type="time" className="input-field" value={editReqForm.deadline_time || ''}
-                                onChange={e => setEditReqForm(f => ({ ...f, deadline_time: e.target.value }))} />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Durée estimée</label>
-                              <select className="input-field" value={editReqForm.estimated_hours}
-                                onChange={e => setEditReqForm(f => ({ ...f, estimated_hours: e.target.value }))}>
-                                {['1', '1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '7', '8'].map(h => (
-                                  <option key={h} value={h}>{h}h</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="mb-3">
-                            <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1">Notes spéciales</label>
-                            <textarea className="input-field min-h-16 resize-none" placeholder="Instructions..."
-                              value={editReqForm.special_notes || ''}
-                              onChange={e => setEditReqForm(f => ({ ...f, special_notes: e.target.value }))} />
-                          </div>
-                          <label className="flex items-center gap-3 cursor-pointer mb-4">
-                            <div className={`w-11 h-6 rounded-full relative transition-colors ${editReqForm.is_urgent ? 'bg-coral' : 'bg-gray-200'}`}
-                              onClick={() => setEditReqForm(f => ({ ...f, is_urgent: !f.is_urgent }))}>
-                              <div className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform left-0.5"
-                                style={{ transform: editReqForm.is_urgent ? 'translateX(22px)' : 'translateX(0)' }} />
-                            </div>
-                            <span className="text-sm font-600 text-gray-700">Demande urgente</span>
-                          </label>
-                          <div className="flex gap-2">
-                            <button onClick={() => saveEditRequest(req.id)} disabled={savingRequest}
-                              className="btn-primary text-xs py-2 disabled:opacity-60">
-                              {savingRequest ? '⏳...' : '💾 Sauvegarder'}
-                            </button>
-                            <button onClick={() => setEditingRequest(null)} className="btn-secondary text-xs py-2">Annuler</button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Checklist progress */}
-                      {total > 0 && (
-                        <div className="mb-4">
-                          <div className="flex justify-between text-xs mb-1.5">
-                            <span className="text-gray-400">{done} / {total} pièces avec photos</span>
-                            <span className="text-teal font-700">{pct}%</span>
-                          </div>
-                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-teal to-teal-light rounded-full transition-all duration-500"
-                              style={{ width: `${pct}%` }} />
-                          </div>
-                          {pct === 100 && (
-                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mt-3 text-xs text-green-700 font-600">
-                              🎉 <strong>Checklist 100% !</strong> {req.agreed_price}$ libérés automatiquement.
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Pro accepté (demande confirmée) */}
-                      {['confirmed', 'in_progress'].includes(req.status) && (() => {
-                        const accepted = offers.find(o => o.status === 'accepted') || offers.find(o => o.pro_id === req.assigned_pro_id)
-                        return accepted ? (
-                          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-teal-light flex items-center justify-center text-lg text-white">🧹</div>
-                                <div>
-                                  <p className="text-sm font-700 text-gray-800">{accepted.pro?.first_name} {accepted.pro?.last_name}</p>
-                                  <p className="text-xs text-green-600 font-600">Offre acceptée — {accepted.price} $</p>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => setViewingPro(accepted.pro)}
-                                className="text-xs font-600 bg-white text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all">
-                                Profil
-                              </button>
-                            </div>
-                          </div>
-                        ) : null
-                      })()}
-
-                      {/* Bouton terminer la mission manuellement (proprio) */}
-                      {['confirmed', 'in_progress'].includes(req.status) && (
-                        <button
-                          onClick={async () => {
-                            if (!confirm('Confirmer la complétion et transférer à l\'historique ?')) return
-                            setCompleting(req.id)
-                            try {
-                              await completeRequest(req.id)
-                              toast('✅ Mission transférée à l\'historique !', 'success')
-                            } catch (e) {
-                              toast('Erreur : ' + e.message, 'error')
-                            } finally {
-                              setCompleting(null)
-                            }
-                          }}
-                          disabled={completing === req.id}
-                          className="w-full py-2.5 mb-3 text-sm font-700 rounded-xl border-2 border-green-500 text-green-700 bg-green-50 hover:bg-green-100 transition-all disabled:opacity-50"
-                        >
-                          {completing === req.id ? '⏳ Transfert...' : '✅ Terminer → Historique'}
-                        </button>
-                      )}
-
-                      {/* Bouton ouvrir / fermer la demande */}
-                      {['confirmed', 'in_progress'].includes(req.status) && total > 0 && (
-                        <button
-                          onClick={() => setOpenRequest(isOpen ? null : req.id)}
-                          className="btn-primary w-full py-3 text-sm font-700 mb-3"
-                        >
-                          {isOpen ? '▲ Fermer la demande' : `▼ Voir la checklist & photos en direct`}
-                        </button>
-                      )}
-
-                      {/* Vue détaillée (quand ouvert) */}
-                      {isOpen && (
-                        <div className="mt-2 pt-4 border-t border-gray-200">
-                          {/* Résumé produits / lavage / spa */}
-                          <div className="flex flex-wrap gap-2 mb-4 text-xs">
-                            {req.supplies_on_site?.length > 0 && (
-                              <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
-                                🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits dispo
-                              </span>
-                            )}
-                            {req.laundry_tasks?.length > 0 && (
-                              <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
-                                🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
-                              </span>
-                            )}
-                            {req.spa_tasks?.length > 0 && (
-                              <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
-                                ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Produits détaillés */}
-                          {req.supplies_on_site?.length > 0 && (
-                            <div className="mb-3">
-                              <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {req.supplies_on_site.map((s, i) => (
-                                  <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
-                                    s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'
-                                  }`}>{s.available ? '✓' : '✗'} {s.name}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Lavage détaillé */}
-                          {req.laundry_tasks?.length > 0 && (
-                            <div className="mb-3">
-                              <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {req.laundry_tasks.map((l, i) => (
-                                  <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Spa détaillé */}
-                          {req.spa_tasks?.length > 0 && (
-                            <div className="mb-3">
-                              <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {req.spa_tasks.map((s, i) => (
-                                  <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {req.special_notes && (
-                            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
-                              📝 {req.special_notes}
-                            </div>
-                          )}
-
-                          {/* Checklist avec photos — vue proprio */}
-                          <div className="bg-coral/5 border border-coral/20 rounded-xl p-4 mb-4">
-                            <div className="flex items-center justify-between mb-4">
-                              <p className="text-sm font-700 text-gray-800">📸 Checklist du ménage — Suivi en direct</p>
-                              <span className="text-xs font-700 text-teal bg-teal/10 px-2.5 py-1 rounded-lg">
-                                {done}/{total} complétées
-                              </span>
-                            </div>
-
-                            <div className="space-y-3">
-                              {tasks.map((template, idx) => {
-                                const comp = completions.find(c => c.template_id === template.id)
-                                const isDone = comp?.is_done && comp?.photo_url
-
-                                return (
-                                  <div key={template.id}
-                                    className={`rounded-xl border-2 overflow-hidden transition-all ${
-                                      isDone ? 'border-teal bg-white' : 'border-gray-200 bg-white'
-                                    }`}>
-
-                                    {/* En-tête de la pièce */}
-                                    <div className={`flex items-center gap-3 px-4 py-3 ${isDone ? 'bg-green-50' : ''}`}>
-                                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-800 flex-shrink-0 ${
-                                        isDone ? 'bg-teal border-teal text-white' : 'bg-gray-100 border-gray-300 text-gray-400'
-                                      }`}>
-                                        {isDone ? '✓' : idx + 1}
-                                      </div>
-                                      <div className="flex-1">
-                                        <p className={`text-sm font-700 ${isDone ? 'text-teal' : 'text-gray-800'}`}>
-                                          {template.room_name}
-                                        </p>
-                                        <p className="text-xs text-gray-400">
-                                          {isDone ? 'Complétée avec photo' : 'En attente de la photo du pro'}
-                                        </p>
-                                      </div>
-                                      {isDone && <CheckCircle size={20} className="text-teal flex-shrink-0" />}
-                                    </div>
-
-                                    {/* Photo si complétée */}
-                                    {isDone && (
-                                      <div className="px-4 pb-3">
-                                        <div className="flex items-center gap-3 bg-green-50 rounded-xl p-3">
-                                          <img
-                                            src={comp.photo_url}
-                                            alt={template.room_name}
-                                            className="w-20 h-20 rounded-lg object-cover border-2 border-teal/30 cursor-pointer hover:opacity-90 transition-all"
-                                            onClick={() => window.open(comp.photo_url, '_blank')}
-                                          />
-                                          <div className="flex-1">
-                                            <p className="text-xs font-600 text-green-700">📸 Photo validée</p>
-                                            <p className="text-xs text-green-600">
-                                              {comp.completed_at ? new Date(comp.completed_at).toLocaleString('fr-CA', {
-                                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                                              }) : ''}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Indicateur en attente */}
-                                    {!isDone && (
-                                      <div className="px-4 pb-3">
-                                        <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3 text-xs text-gray-400">
-                                          <Camera size={14} />
-                                          <span>En attente de la photo du professionnel...</span>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Résumé badges (visible quand fermé) */}
-                      {!isOpen && (
-                        <div className="flex flex-wrap gap-2 mb-3 text-xs">
-                          {req.supplies_on_site?.length > 0 && (
-                            <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-lg">
-                              🧴 {req.supplies_on_site.filter(s => s.available).length}/{req.supplies_on_site.length} produits
-                            </span>
-                          )}
-                          {req.laundry_tasks?.length > 0 && (
-                            <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">
-                              🧺 {req.laundry_tasks.length} lavage{req.laundry_tasks.length > 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {req.spa_tasks?.length > 0 && (
-                            <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">
-                              ♨️ {req.spa_tasks.length} tâche{req.spa_tasks.length > 1 ? 's' : ''} spa
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Offres reçues (demande ouverte) */}
-                      {req.status === 'open' && offers.length > 0 && (
-                        <div>
-                          <p className="text-sm font-700 text-gray-800 mb-2">📨 Offres reçues ({offers.length})</p>
-                          {offers.map(offer => (
-                            <div key={offer.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-2 hover:border-coral transition-all">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-coral-light to-amber-300 flex items-center justify-center text-lg">👩</div>
-                                <div>
-                                  <p className="text-sm font-700 text-gray-800">{offer.pro?.first_name} {offer.pro?.last_name}</p>
-                                  <p className="text-xs text-amber-500">{(() => {
-                                    const proReviews = myRequests
-                                      .filter(r => r.assigned_pro_id === offer.pro_id && r.status === 'completed' && r.reviews?.length > 0)
-                                      .flatMap(r => r.reviews.filter(rv => rv.reviewee_id === offer.pro_id))
-                                    if (proReviews.length === 0) return '☆ Nouveau'
-                                    const avg = (proReviews.reduce((s, r) => s + r.rating, 0) / proReviews.length).toFixed(1)
-                                    return `${'★'.repeat(Math.round(avg))}${'☆'.repeat(5 - Math.round(avg))} ${avg}`
-                                  })()}</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-lg font-800 text-gray-900">{offer.price} $</p>
-                                <div className="flex gap-2 mt-1">
-                                  <button
-                                    onClick={() => handleAccept(req.id, offer.id, offer.pro_id, offer.price)}
-                                    className="text-xs font-700 bg-coral text-white px-3 py-1.5 rounded-lg hover:bg-coral-dark transition-all">
-                                    Accepter
-                                  </button>
-                                  <button
-                                    onClick={() => setViewingPro(offer.pro)}
-                                    className="text-xs font-600 bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all">
-                                    Profil
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Bouton chat si pro assigne */}
-                      {req.assigned_pro_id && (
-                        <button
-                          onClick={() => setChatRequest({ id: req.id, chaletName: chalet.name })}
-                          className="btn-secondary text-xs flex items-center gap-2 mt-3"
-                        >
-                          <MessageSquare size={14} /> Envoyer un message
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )
-            })
-          )}
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
 
