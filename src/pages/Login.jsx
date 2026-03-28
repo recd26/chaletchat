@@ -26,7 +26,7 @@ export default function Login() {
     try {
       const { user } = await signIn({ email, password: pw })
       toast('✅ Connexion réussie !', 'success')
-      setTimeout(() => navigate('/dashboard'), 800)
+      setTimeout(() => navigate('/accueil'), 800)
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
     } finally {

@@ -29,7 +29,7 @@ export function useMessages(requestId) {
             .from('messages')
             .update({ read_at: new Date().toISOString() })
             .eq('id', payload.new.id)
-            .then()
+            .then(() => {}, err => console.error('Mark as read failed:', err))
         }
       })
       .subscribe()
