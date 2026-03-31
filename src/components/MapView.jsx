@@ -129,6 +129,15 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
       return { ...req, coords: [req.chalet.lat, req.chalet.lng], dist, inRadius }
     })
 
+  // Regrouper les demandes par chalet (mêmes coordonnées)
+  const groupedByChalet = {}
+  requestsWithCoords.forEach(req => {
+    const key = `${req.chalet.lat},${req.chalet.lng}`
+    if (!groupedByChalet[key]) groupedByChalet[key] = []
+    groupedByChalet[key].push(req)
+  })
+  const chaletGroups = Object.values(groupedByChalet)
+
   return (
     <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: '420px' }}>
       <MapContainer
@@ -163,128 +172,118 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
           </Marker>
         )}
 
-        {/* Demandes disponibles */}
-        {requestsWithCoords.map(req => {
-          const urgent = isAutoUrgent(req)
-          const icon = urgent ? urgentIcon : req.inRadius ? chaletIcon : farIcon
-          const rooms = req.chalet?.checklist_templates?.length || 0
-          const offersCount = req.offers?.length || 0
-          const dateStr = req.scheduled_date
-            ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' })
-            : '?'
-          const dayStr = req.scheduled_date
-            ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday: 'short' })
-            : ''
+        {/* Demandes disponibles — groupées par chalet */}
+        {chaletGroups.map(group => {
+          const first = group[0]
+          const count = group.length
+          const hasUrgent = group.some(r => isAutoUrgent(r))
+          const icon = count > 1
+            ? new L.DivIcon({
+                html: `<div style="
+                  background: ${hasUrgent ? '#DC2626' : '#FF5A5F'};
+                  color: white;
+                  border-radius: 50% 50% 50% 0;
+                  transform: rotate(-45deg);
+                  width: 40px;
+                  height: 40px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 14px;
+                  font-weight: 800;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                  border: 2px solid white;
+                  ${hasUrgent ? 'animation: pulse 2s infinite;' : ''}
+                "><span style="transform: rotate(45deg)">${count}</span></div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 40],
+                popupAnchor: [0, -40],
+                className: '',
+              })
+            : hasUrgent ? urgentIcon
+            : first.inRadius ? chaletIcon : farIcon
 
           return (
-            <Marker key={req.id} position={req.coords} icon={icon}>
-              {/* Tooltip au survol — 3 infos clés max */}
-              <Tooltip direction="top" offset={[0, -38]} opacity={0.95}>
+            <Marker key={first.id} position={first.coords} icon={icon}>
+              {/* Tooltip */}
+              <Tooltip direction="top" offset={[0, -42]} opacity={0.95}>
                 <span style={{ fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                  {urgent && '🔴 '}
-                  {`🗓 ${dateStr}`}
-                  {req.dist != null && ` • 📍 ${req.dist.toFixed(0)} km`}
-                  {` • 📨 ${offersCount} offre${offersCount !== 1 ? 's' : ''}`}
+                  🏔 {first.chalet?.name}
+                  {count > 1 && ` • ${count} demandes`}
+                  {first.dist != null && ` • ${first.dist.toFixed(0)} km`}
                 </span>
               </Tooltip>
 
-              {/* Popup au clic — infos complètes */}
+              {/* Popup avec toutes les demandes du chalet */}
               <Popup>
-                <div style={{ minWidth: '220px', maxWidth: '260px' }}>
-                  {/* Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '6px' }}>
+                <div style={{ minWidth: '230px', maxWidth: '280px' }}>
+                  {/* Header chalet */}
+                  <div style={{ marginBottom: '8px' }}>
                     <p style={{ fontWeight: '700', color: '#111', fontSize: '14px', margin: 0 }}>
-                      🏔 {req.chalet?.name || 'Chalet'}
+                      🏔 {first.chalet?.name || 'Chalet'}
+                      {count > 1 && <span style={{ fontSize: '11px', color: '#FF5A5F', fontWeight: '800' }}> × {count}</span>}
                     </p>
-                    {urgent && (
-                      <span style={{ background: '#FEE2E2', color: '#DC2626', fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '6px' }}>
-                        🔴 {req.is_urgent ? 'Urgent' : '< 48h'}
-                      </span>
-                    )}
+                    <p style={{ fontSize: '12px', color: '#666', margin: '2px 0 0' }}>
+                      📍 {first.chalet?.city || '?'}
+                      {first.dist != null && (
+                        <span style={{ color: first.inRadius ? '#0D9488' : '#9CA3AF', fontWeight: '600' }}>
+                          {' '}— {first.dist.toFixed(1)} km {!first.inRadius ? '(hors zone)' : ''}
+                        </span>
+                      )}
+                    </p>
+                    <p style={{ fontSize: '11px', color: '#999', margin: '2px 0 0' }}>
+                      {first.chalet?.bedrooms || '?'} ch. • {first.chalet?.bathrooms || '?'} sdb
+                    </p>
                   </div>
 
-                  {/* Lieu + distance */}
-                  <p style={{ fontSize: '12px', color: '#666', margin: '0 0 4px' }}>
-                    📍 {req.chalet?.city || '?'}
-                    {req.dist != null && (
-                      <span style={{ color: req.inRadius ? '#0D9488' : '#9CA3AF', fontWeight: '600' }}>
-                        {' '}— {req.dist.toFixed(1)} km {!req.inRadius ? '(hors zone)' : ''}
-                      </span>
-                    )}
-                  </p>
-
-                  {/* Grille stats */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', margin: '8px 0', background: '#F9FAFB', borderRadius: '8px', padding: '6px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '13px', fontWeight: '800', color: '#111', margin: 0 }}>
-                        {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
-                      </p>
-                      <p style={{ fontSize: '10px', color: '#999', margin: 0 }}>💰 Budget</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '13px', fontWeight: '800', color: '#111', margin: 0 }}>
-                        {dateStr}
-                      </p>
-                      <p style={{ fontSize: '10px', color: '#999', margin: 0 }}>🗓 {dayStr}</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '13px', fontWeight: '800', color: '#111', margin: 0 }}>
-                        {req.chalet?.bedrooms || '?'} ch / {req.chalet?.bathrooms || '?'} sdb
-                      </p>
-                      <p style={{ fontSize: '10px', color: '#999', margin: 0 }}>🏠 Taille</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '13px', fontWeight: '800', color: '#111', margin: 0 }}>
-                        ~{req.estimated_hours || '?'}h
-                      </p>
-                      <p style={{ fontSize: '10px', color: '#999', margin: 0 }}>⏱ Durée</p>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '8px' }}>
-                    {rooms > 0 && (
-                      <span style={{ fontSize: '10px', background: '#F0FDFA', color: '#0D9488', border: '1px solid #99F6E4', padding: '2px 6px', borderRadius: '6px' }}>
-                        📸 {rooms} pièces
-                      </span>
-                    )}
-                    {req.scheduled_time && (
-                      <span style={{ fontSize: '10px', background: '#F3F4F6', color: '#666', padding: '2px 6px', borderRadius: '6px' }}>
-                        ⏰ {req.scheduled_time}
-                      </span>
-                    )}
-                    {(req.laundry_tasks?.length || 0) > 0 && (
-                      <span style={{ fontSize: '10px', background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', padding: '2px 6px', borderRadius: '6px' }}>
-                        🧺 Lavage
-                      </span>
-                    )}
-                    {(req.spa_tasks?.length || 0) > 0 && (
-                      <span style={{ fontSize: '10px', background: '#FAF5FF', color: '#7C3AED', border: '1px solid #DDD6FE', padding: '2px 6px', borderRadius: '6px' }}>
-                        ♨️ Spa
-                      </span>
-                    )}
-                    {offersCount > 0 && (
-                      <span style={{ fontSize: '10px', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', padding: '2px 6px', borderRadius: '6px', fontWeight: '600' }}>
-                        📨 {offersCount} offre{offersCount > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Bouton */}
-                  <div
-                    onClick={() => onRequestClick && onRequestClick(req.id)}
-                    style={{
-                      padding: '8px 12px',
-                      background: '#0D9488',
-                      color: 'white',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      textAlign: 'center',
-                      cursor: 'pointer'
-                    }}>
-                    Voir la demande ↓
-                  </div>
+                  {/* Liste des demandes */}
+                  {group.map((req, idx) => {
+                    const urgent = isAutoUrgent(req)
+                    const dateStr = req.scheduled_date
+                      ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday: 'short', day: 'numeric', month: 'short' })
+                      : '?'
+                    const offersCount = req.offers?.length || 0
+                    return (
+                      <div key={req.id}
+                        onClick={() => onRequestClick && onRequestClick(req.id)}
+                        style={{
+                          padding: '8px',
+                          marginBottom: idx < group.length - 1 ? '6px' : '0',
+                          background: urgent ? '#FEF2F2' : '#F9FAFB',
+                          border: `1px solid ${urgent ? '#FECACA' : '#E5E7EB'}`,
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                        }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: '#111' }}>
+                            {urgent && '🔴 '}🗓 {dateStr}
+                          </span>
+                          <span style={{ fontSize: '12px', fontWeight: '800', color: '#0D9488' }}>
+                            {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '10px', background: '#F3F4F6', color: '#666', padding: '1px 5px', borderRadius: '4px' }}>
+                            ⏰ {req.scheduled_time || '?'}
+                          </span>
+                          <span style={{ fontSize: '10px', background: '#F3F4F6', color: '#666', padding: '1px 5px', borderRadius: '4px' }}>
+                            ~{req.estimated_hours || '?'}h
+                          </span>
+                          {offersCount > 0 && (
+                            <span style={{ fontSize: '10px', background: '#FEF3C7', color: '#D97706', padding: '1px 5px', borderRadius: '4px', fontWeight: '600' }}>
+                              📨 {offersCount}
+                            </span>
+                          )}
+                          {(req.laundry_tasks?.length || 0) > 0 && (
+                            <span style={{ fontSize: '10px', background: '#EFF6FF', color: '#2563EB', padding: '1px 5px', borderRadius: '4px' }}>🧺</span>
+                          )}
+                          {(req.spa_tasks?.length || 0) > 0 && (
+                            <span style={{ fontSize: '10px', background: '#FAF5FF', color: '#7C3AED', padding: '1px 5px', borderRadius: '4px' }}>♨️</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </Popup>
             </Marker>
