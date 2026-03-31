@@ -21,7 +21,6 @@ export default function ProDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab,        setTab]        = useState(0)
-  // viewMode removed — map always visible on tab 0
   const [highlightRequest, setHighlightRequest] = useState(null)
 
   // Lire les search params pour navigation depuis les notifications
@@ -136,11 +135,9 @@ export default function ProDashboard() {
   const myCompleted = useMemo(() => requests.filter(r =>
     r.assigned_pro_id === profile?.id && r.status === 'completed'
   ), [requests, profile])
-  // Mes offres en attente
   const myPendingOffers = useMemo(() => requests.filter(r =>
     r.status === 'open' && r.offers?.some(o => o.pro_id === profile?.id && o.status === 'pending')
   ), [requests, profile])
-
   const totalEarned = useMemo(() => myCompleted.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0), [myCompleted])
   const myReviews = useMemo(() => myCompleted.flatMap(r => r.reviews || []).filter(r => r.reviewee_id === profile?.id), [myCompleted, profile])
   const avgRating = useMemo(() => myReviews.length > 0
@@ -237,404 +234,33 @@ export default function ProDashboard() {
         ))}
       </div>
 
-      {/* ── Onglet 0 : Demandes ── */}
+      {/* ── Onglet 0 : Demandes ouvertes ── */}
       {tab === 0 && (
         <div>
-          {/* Missions actives */}
-          {myActive.length > 0 && (
-            <div className="mb-5">
-              <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">
-                Mes missions ({myActive.length})
-              </h2>
-
-              {myActive.map(req => {
-                const tasks = req.chalet?.checklist_templates || []
-                const completions = req.checklist_completions || []
-                const done = completions.filter(c => c.is_done && c.photo_url).length
-                const pct = tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0
-                const isOpen = openMission === req.id
-
-                const ms = getMissionStatus(req)
-                const MISSION_STEPS = [
-                  { key: 'accepted',  icon: '🟡', label: 'Accepté' },
-                  { key: 'en_route',  icon: '🚗', label: 'En route' },
-                  { key: 'sur_place', icon: '🏠', label: 'Sur place' },
-                  { key: 'en_cours',  icon: '🧹', label: 'En cours' },
-                  { key: 'completed', icon: '✅', label: 'Complété' },
-                ]
-                const currentStep = ms?.step || 1
-
-                return (
-                  <div key={req.id} className="card mb-4 border-teal border">
-                    {/* En-tête compact (toujours visible) */}
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <span className="pill-active mb-2 inline-block">{ms?.icon || '🔵'} {ms?.label || 'Mission'}</span>
-                        <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
-                        <p className="text-xs text-gray-400">
-                          {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''} à {req.scheduled_time}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/messages?chat=${req.id}`) }}
-                          className="p-2 rounded-xl bg-teal/10 text-teal hover:bg-teal/20 transition-all"
-                          title="Chat avec le propriétaire"
-                        >
-                          <MessageSquare size={16} />
-                        </button>
-                        <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
-                      </div>
-                    </div>
-
-                    {/* Timeline de mission */}
-                    <div className="mb-3 bg-gray-50 rounded-xl px-3 py-3">
-                      <div className="flex items-center gap-0.5 mb-2">
-                        {MISSION_STEPS.map((s, i) => (
-                          <div key={s.key} className="flex items-center flex-1">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0 ${
-                              i + 1 < currentStep ? 'bg-teal text-white' :
-                              i + 1 === currentStep ? 'bg-teal text-white ring-2 ring-teal/30' :
-                              'bg-gray-200 text-gray-400'
-                            }`}>
-                              {i + 1 <= currentStep ? s.icon : (i + 1)}
-                            </div>
-                            {i < MISSION_STEPS.length - 1 && (
-                              <div className={`flex-1 h-0.5 mx-0.5 ${i + 1 < currentStep ? 'bg-teal' : 'bg-gray-200'}`} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-500 font-600">
-                        {ms?.icon} {ms?.label}
-                        {ms?.time && ` — ${new Date(ms.time).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
-                      </p>
-
-                      {/* Boutons d'action selon l'étape */}
-                      {currentStep === 1 && (
-                        <button
-                          onClick={async () => {
-                            setUpdatingStatus(req.id)
-                            try {
-                              await updateMissionStatus(req.id, 'en_route')
-                              toast('🚗 Statut mis à jour : En route !', 'success')
-                            } catch (e) { toast('❌ ' + e.message, 'error') }
-                            finally { setUpdatingStatus(null) }
-                          }}
-                          disabled={updatingStatus === req.id}
-                          className="w-full mt-2 py-2.5 text-sm font-700 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-700 hover:bg-amber-100 transition-all disabled:opacity-50"
-                        >
-                          {updatingStatus === req.id ? '⏳ Mise à jour...' : '🚗 Je pars maintenant'}
-                        </button>
-                      )}
-                      {currentStep === 2 && (
-                        <button
-                          onClick={async () => {
-                            setUpdatingStatus(req.id)
-                            try {
-                              await updateMissionStatus(req.id, 'sur_place')
-                              toast('🏠 Statut mis à jour : Sur place !', 'success')
-                            } catch (e) { toast('❌ ' + e.message, 'error') }
-                            finally { setUpdatingStatus(null) }
-                          }}
-                          disabled={updatingStatus === req.id}
-                          className="w-full mt-2 py-2.5 text-sm font-700 rounded-xl bg-blue-50 border-2 border-blue-400 text-blue-700 hover:bg-blue-100 transition-all disabled:opacity-50"
-                        >
-                          {updatingStatus === req.id ? '⏳ Mise à jour...' : '🏠 Je suis arrivé(e)'}
-                        </button>
-                      )}
-                      {currentStep === 3 && (
-                        <p className="mt-2 text-xs text-teal font-600 bg-teal/10 rounded-lg px-3 py-2">
-                          📸 Prenez la première photo de la checklist pour démarrer le ménage
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Barre de progression (toujours visible) */}
-                    <div className="mb-3">
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-gray-400">{done} / {tasks.length} pièces complétées</span>
-                        <span className="text-teal font-700">{pct}%</span>
-                      </div>
-                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-teal to-teal-light rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-
-                    {pct === 100 && (
-                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-sm text-green-700 font-600">
-                        🎉 Checklist complète ! 💸 <strong>{req.agreed_price}$</strong> en cours de versement.
-                      </div>
-                    )}
-
-                    {/* Bouton terminer la mission manuellement */}
-                    <button
-                      onClick={async () => {
-                        if (!confirm('Terminer cette mission et la transférer à l\'historique ?')) return
-                        setCompleting(req.id)
-                        try {
-                          await completeRequest(req.id)
-                          toast('✅ Mission transférée à l\'historique !', 'success')
-                        } catch (e) {
-                          toast('Erreur : ' + e.message, 'error')
-                        } finally {
-                          setCompleting(null)
-                        }
-                      }}
-                      disabled={completing === req.id}
-                      className="w-full py-2.5 mb-2 text-sm font-700 rounded-xl border-2 border-green-500 text-green-700 bg-green-50 hover:bg-green-100 transition-all disabled:opacity-50"
-                    >
-                      {completing === req.id ? '⏳ Transfert...' : '✅ Terminer → Historique'}
-                    </button>
-
-                    {/* Bouton ouvrir / fermer */}
-                    <button
-                      onClick={() => setOpenMission(isOpen ? null : req.id)}
-                      className="btn-teal w-full py-3 text-sm font-700 mb-2"
-                    >
-                      {isOpen ? '▲ Fermer la mission' : `▼ Ouvrir la mission — Checklist & Photos`}
-                    </button>
-
-                    {/* Vue détaillée (quand ouvert) */}
-                    {isOpen && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        {/* Infos planification */}
-                        <div className="bg-gray-50 rounded-xl px-4 py-3 flex gap-5 flex-wrap text-xs text-gray-400 mb-3">
-                          <span>🗓 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'long', day:'numeric', month:'long' }) : ''}</span>
-                          <span>⏰ {req.scheduled_time}</span>
-                          {req.deadline_time && <span>⏱ Limite : {req.deadline_time}</span>}
-                          {req.estimated_hours && <span>~{req.estimated_hours}h</span>}
-                        </div>
-
-                        {/* Détails accès */}
-                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs text-green-700 space-y-1">
-                          <p className="font-700">🔑 Détails d'accès</p>
-                          <p>📍 {req.chalet?.address}, {req.chalet?.city}</p>
-                          {req.chalet?.access_code && <p>🔑 Code porte : <strong>{req.chalet.access_code}</strong></p>}
-                          {req.chalet?.key_box && <p>📦 Boîte à clé : {req.chalet.key_box}</p>}
-                          {req.chalet?.parking_info && <p>🅿️ Stationnement : {req.chalet.parking_info}</p>}
-                          {req.chalet?.wifi_name && <p>🌐 Wi-Fi : {req.chalet.wifi_name} • {req.chalet.wifi_password}</p>}
-                          {req.chalet?.special_notes && <p>⚠️ Notes : {req.chalet.special_notes}</p>}
-                        </div>
-
-                        {/* Produits sur place */}
-                        {req.supplies_on_site?.length > 0 && (
-                          <div className="mb-3">
-                            <p className="text-xs font-700 text-gray-400 mb-1.5">🧴 Produits sur place :</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {req.supplies_on_site.map((s, i) => (
-                                <span key={i} className={`text-xs px-2 py-1 rounded-lg ${
-                                  s.available ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'
-                                }`}>{s.available ? '✓' : '✗'} {s.name}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Lavage */}
-                        {req.laundry_tasks?.length > 0 && (
-                          <div className="mb-3">
-                            <p className="text-xs font-700 text-gray-400 mb-1.5">🧺 Lavage à faire :</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {req.laundry_tasks.map((l, i) => (
-                                <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-lg">{l.name}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Spa */}
-                        {req.spa_tasks?.length > 0 && (
-                          <div className="mb-3">
-                            <p className="text-xs font-700 text-gray-400 mb-1.5">♨️ Entretien spa :</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {req.spa_tasks.map((s, i) => (
-                                <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg">{s.name}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {req.special_notes && (
-                          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
-                            📝 {req.special_notes}
-                          </div>
-                        )}
-
-                        {/* Checklist avec photos */}
-                        <div className="bg-teal/5 border border-teal/20 rounded-xl p-4 mb-4 mt-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <p className="text-sm font-700 text-gray-800">Checklist du ménage 📸</p>
-                            <span className="text-xs font-700 text-teal bg-teal/10 px-2.5 py-1 rounded-lg">
-                              {done}/{tasks.length} complétées
-                            </span>
-                          </div>
-
-                          <div className="space-y-3">
-                            {tasks.map((template, idx) => {
-                              const comp = completions.find(c => c.template_id === template.id)
-                              const isDone = comp?.is_done && comp?.photo_url
-                              const key = `${req.id}-${template.id}`
-
-                              return (
-                                <div key={template.id}
-                                  className={`rounded-xl border-2 overflow-hidden transition-all ${
-                                    isDone ? 'border-teal bg-white' : 'border-gray-200 bg-white'
-                                  }`}>
-
-                                  {/* En-tête de la pièce */}
-                                  <div className={`flex items-center gap-3 px-4 py-3 ${isDone ? 'bg-green-50' : ''}`}>
-                                    <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-800 flex-shrink-0 ${
-                                      isDone ? 'bg-teal border-teal text-white' : 'bg-gray-100 border-gray-300 text-gray-400'
-                                    }`}>
-                                      {isDone ? '✓' : idx + 1}
-                                    </div>
-                                    <div className="flex-1">
-                                      <p className={`text-sm font-700 ${isDone ? 'text-teal' : 'text-gray-800'}`}>
-                                        {template.room_name}
-                                      </p>
-                                      <p className="text-xs text-gray-400">
-                                        {isDone ? 'Complétée avec photo' : 'Photo obligatoire pour valider'}
-                                      </p>
-                                    </div>
-                                    {isDone && <CheckCircle size={20} className="text-teal flex-shrink-0" />}
-                                  </div>
-
-                                  {/* Photo de référence du proprio */}
-                                  {template.reference_photo_url && (
-                                    <div className="px-4 pb-2">
-                                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-2">
-                                        <img
-                                          src={template.reference_photo_url}
-                                          alt={`Réf: ${template.room_name}`}
-                                          onClick={() => window.open(template.reference_photo_url, '_blank')}
-                                          className="w-12 h-12 object-cover rounded-md border border-blue-300 cursor-pointer hover:opacity-80 flex-shrink-0"
-                                        />
-                                        <p className="text-[10px] text-blue-600 font-600">📌 Photo de référence — cliquez pour agrandir</p>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Zone photo */}
-                                  <div className="px-4 pb-3">
-                                    {isDone ? (
-                                      /* Photo prise - afficher miniature */
-                                      <div className="flex items-center gap-3 bg-green-50 rounded-xl p-3">
-                                        <img
-                                          src={comp.photo_url}
-                                          alt={template.room_name}
-                                          className="w-16 h-16 rounded-lg object-cover border-2 border-teal/30"
-                                        />
-                                        <div className="flex-1">
-                                          <p className="text-xs font-600 text-green-700">Photo validée</p>
-                                          <p className="text-xs text-green-600">
-                                            {comp.completed_at ? new Date(comp.completed_at).toLocaleString('fr-CA', { hour:'2-digit', minute:'2-digit' }) : ''}
-                                          </p>
-                                        </div>
-                                        {/* Reprendre la photo */}
-                                        <label className="cursor-pointer text-xs text-gray-400 hover:text-teal transition-colors">
-                                          Reprendre
-                                          <input type="file" accept="image/*" className="hidden"
-                                            onChange={e => handlePhoto(req.id, template.id, e)} />
-                                        </label>
-                                      </div>
-                                    ) : (
-                                      /* Pas encore complétée - boutons photo */
-                                      <div className="flex gap-2">
-                                        {/* Prendre une photo (caméra) */}
-                                        <label className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed transition-all ${
-                                          uploading[key] ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-teal/40 bg-teal/5 hover:bg-teal/10 hover:border-teal'
-                                        }`}>
-                                          <Camera size={18} className="text-teal" />
-                                          <span className="text-sm font-700 text-teal">
-                                            {uploading[key] ? 'Envoi...' : 'Prendre une photo'}
-                                          </span>
-                                          <input type="file" accept="image/*" capture="environment" className="hidden"
-                                            disabled={uploading[key]}
-                                            onChange={e => handlePhoto(req.id, template.id, e)} />
-                                        </label>
-
-                                        {/* Choisir une photo (galerie) */}
-                                        <label className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed transition-all ${
-                                          uploading[key] ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400'
-                                        }`}>
-                                          <span className="text-base">🖼</span>
-                                          <span className="text-sm font-600 text-gray-600">
-                                            {uploading[key] ? 'Envoi...' : 'Choisir une photo'}
-                                          </span>
-                                          <input type="file" accept="image/*" className="hidden"
-                                            disabled={uploading[key]}
-                                            onChange={e => handlePhoto(req.id, template.id, e)} />
-                                        </label>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Bouton chat */}
-                        <button
-                          onClick={() => navigate(`/messages?chat=${req.id}`)}
-                          className="btn-secondary text-xs flex items-center gap-2"
-                        >
-                          <MessageSquare size={14} /> Envoyer un message au propriétaire
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Demandes ouvertes */}
-          <div className="flex items-center justify-between mb-3 mt-5">
-            <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide">
-              {viewMode === 'map'
-                ? `Toutes les demandes (${allOpenReqs.length})`
-                : `Demandes à proximité (${openReqs.length})`
-              }
-            </h2>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <button onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-700 transition-all ${
-                  viewMode === 'list' ? 'bg-white text-teal shadow-sm' : 'text-gray-400'
-                }`}>
-                <List size={13} /> Liste
-              </button>
-              <button onClick={() => setViewMode('map')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-700 transition-all ${
-                  viewMode === 'map' ? 'bg-white text-teal shadow-sm' : 'text-gray-400'
-                }`}>
-                <Map size={13} /> Carte
-              </button>
-            </div>
+          {/* Carte toujours visible */}
+          <div className="mb-5">
+            <Suspense fallback={<div className="h-96 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400">🗺️ Chargement de la carte...</div>}>
+              <MapView
+                requests={allOpenReqs}
+                proLat={profile?.lat}
+                proLng={profile?.lng}
+                radius={profile?.radius_km || 25}
+                onRequestClick={(reqId) => {
+                  setTimeout(() => {
+                    document.getElementById(`request-${reqId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }, 100)
+                }}
+              />
+            </Suspense>
+            <p className="text-xs text-gray-400 text-center mt-2">Cliquez sur un 🏔 pour voir les détails</p>
           </div>
 
-          {/* Vue carte */}
-          {viewMode === 'map' && (
-            <div className="mb-5">
-              <Suspense fallback={<div className="h-96 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400">🗺️ Chargement de la carte...</div>}>
-                <MapView
-                  requests={allOpenReqs}
-                  proLat={profile?.lat}
-                  proLng={profile?.lng}
-                  radius={profile?.radius_km || 25}
-                  onRequestClick={(reqId) => {
-                    setViewMode('list')
-                    setTimeout(() => {
-                      document.getElementById(`request-${reqId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    }, 100)
-                  }}
-                />
-              </Suspense>
-              <p className="text-xs text-gray-400 text-center mt-2">Cliquez sur un 🏔 pour voir les détails</p>
-            </div>
-          )}
+          {/* Demandes ouvertes */}
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide">
+              Demandes à proximité ({openReqs.length})
+            </h2>
+          </div>
 
           {/* Bannière demande expirée (via notification) */}
           {expiredRequest && (
@@ -657,7 +283,7 @@ export default function ProDashboard() {
               <p className="font-700 text-gray-600">Aucune demande dans votre zone</p>
               <p className="text-sm text-gray-400 mt-1">Vous recevrez une notification dès qu'une demande est publiée près de chez vous.</p>
             </div>
-          ) : viewMode === 'list' ? (
+          ) : (
             openReqs.map(req => {
               const dist = getDistance(req)
               const urgent = isAutoUrgent(req)
@@ -906,8 +532,358 @@ export default function ProDashboard() {
         </div>
       )}
 
-      {/* ── Onglet 1 : Profil & Vérification ── */}
+      {/* ── Onglet 1 : Offres envoyées ── */}
       {tab === 1 && (
+        <div>
+          <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">
+            Offres en attente ({myPendingOffers.length})
+          </h2>
+
+          {myPendingOffers.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-3xl mb-2">⏳</p>
+              <p className="font-700 text-gray-600">Aucune offre en attente</p>
+              <p className="text-sm text-gray-400 mt-1">Vos offres soumises apparaîtront ici en attendant la réponse du propriétaire.</p>
+            </div>
+          ) : (
+            myPendingOffers.map(req => {
+              const myOffer = req.offers?.find(o => o.pro_id === profile?.id && o.status === 'pending')
+              if (!myOffer) return null
+              return (
+                <div key={req.id} className="card mb-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
+                      <p className="text-xs text-gray-400">{req.chalet?.city}</p>
+                    </div>
+                    <span className="text-2xl">⏳</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                      <p className="text-base mb-0.5">🗓</p>
+                      <p className="text-sm font-800 text-gray-900">{new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day:'numeric', month:'short' })}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                      <p className="text-base mb-0.5">💰</p>
+                      <p className="text-sm font-800 text-gray-900">{req.suggested_budget ? `${req.suggested_budget} $` : '—'}</p>
+                      <p className="text-[10px] text-gray-400">Budget</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl px-2 py-2.5 text-center">
+                      <p className="text-base mb-0.5">🏷</p>
+                      <p className="text-sm font-800 text-teal">{myOffer.price} $</p>
+                      <p className="text-[10px] text-gray-400">Votre offre</p>
+                    </div>
+                  </div>
+
+                  {myOffer.message && (
+                    <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-3">💬 {myOffer.message}</p>
+                  )}
+
+                  {editingOffer === req.id ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                      <p className="text-sm font-700 text-amber-700 mb-3">✏️ Modifier votre offre</p>
+                      <div className="flex gap-2 items-center mb-3">
+                        <div className="flex-1 relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-700 text-sm">$</span>
+                          <input
+                            type="number"
+                            placeholder="Nouveau prix"
+                            value={editOfferPrice}
+                            onChange={e => setEditOfferPrice(e.target.value)}
+                            className="input-field-teal pl-7"
+                          />
+                        </div>
+                      </div>
+                      <textarea
+                        className="input-field-teal text-xs min-h-12 resize-none mb-3 w-full"
+                        placeholder="Message (optionnel)"
+                        value={editOfferMsg}
+                        onChange={e => setEditOfferMsg(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleUpdateOffer(myOffer.id)}
+                          disabled={savingOffer}
+                          className="btn-teal text-xs disabled:opacity-60">
+                          {savingOffer ? '⏳...' : '💾 Sauvegarder'}
+                        </button>
+                        <button onClick={() => setEditingOffer(null)}
+                          className="btn-secondary text-xs">Annuler</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditingOffer(req.id)
+                        setEditOfferPrice(myOffer.price?.toString() || '')
+                        setEditOfferMsg(myOffer.message || '')
+                      }}
+                      className="w-full py-2 text-xs font-600 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-all">
+                      ✏️ Modifier l'offre
+                    </button>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet 2 : Missions confirmées ── */}
+      {tab === 2 && (
+        <div>
+          <h2 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">
+            Missions actives ({myActive.length})
+          </h2>
+
+          {myActive.length === 0 ? (
+            <div className="card text-center py-10">
+              <p className="text-3xl mb-2">✅</p>
+              <p className="font-700 text-gray-600">Aucune mission confirmée</p>
+              <p className="text-sm text-gray-400 mt-1">Vos missions acceptées apparaîtront ici.</p>
+            </div>
+          ) : (
+            myActive.map(req => {
+              const ms = getMissionStatus(req)
+              const tasks = req.chalet?.checklist_templates || []
+              const completions = req.checklist_completions || []
+              const completedCount = completions.filter(c => c.is_done).length
+              const isExpanded = openMission === req.id
+
+              return (
+                <div key={req.id} id={`mission-${req.id}`} className="card mb-4">
+                  {/* Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-700 text-gray-900">🏔 {req.chalet?.name}</h3>
+                      <p className="text-xs text-gray-400">
+                        {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''}
+                        {req.scheduled_time ? ` à ${req.scheduled_time}` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-800 text-teal">{req.agreed_price} $</p>
+                      {ms && (
+                        <span className="text-[10px] font-700 text-teal bg-teal/10 px-2 py-0.5 rounded-full">{ms.icon} {ms.label}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Timeline progress */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-700 text-gray-400">Progression</span>
+                      <span className="text-xs font-700 text-teal">{completedCount}/{tasks.length} pièces</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="bg-teal rounded-full h-2 transition-all" style={{ width: tasks.length > 0 ? `${(completedCount / tasks.length) * 100}%` : '0%' }} />
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setOpenMission(isExpanded ? null : req.id)}
+                      className="flex-1 py-2 text-xs font-600 text-teal bg-teal/5 border border-teal/20 rounded-lg hover:bg-teal/10 transition-all">
+                      {isExpanded ? '▲ Fermer' : '📋 Checklist & Photos'}
+                    </button>
+                    <button
+                      onClick={() => navigate(`/chat/${req.id}`)}
+                      className="py-2 px-4 text-xs font-600 text-white bg-teal rounded-lg hover:bg-teal/90 transition-all flex items-center gap-1">
+                      <MessageSquare size={12} /> Chat
+                    </button>
+                  </div>
+
+                  {/* Status update buttons */}
+                  {req.status === 'confirmed' && (
+                    <button
+                      onClick={async () => {
+                        setUpdatingStatus(req.id)
+                        try {
+                          await updateMissionStatus(req.id, 'in_progress')
+                          toast('🚀 Mission démarrée !', 'success')
+                        } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                        finally { setUpdatingStatus(null) }
+                      }}
+                      disabled={updatingStatus === req.id}
+                      className="w-full py-2.5 text-sm font-700 text-white bg-teal rounded-xl hover:bg-teal/90 transition-all disabled:opacity-60 mb-3">
+                      {updatingStatus === req.id ? '⏳...' : '🚀 Démarrer la mission'}
+                    </button>
+                  )}
+
+                  {/* Expanded: Checklist with photo uploads */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 pt-3 space-y-2">
+                      {tasks.sort((a, b) => a.position - b.position).map(template => {
+                        const comp = completions.find(c => c.template_id === template.id)
+                        const uploadKey = `${req.id}-${template.id}`
+                        return (
+                          <div key={template.id} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 border transition-all ${
+                            comp?.is_done ? 'bg-teal/5 border-teal/20' : 'bg-gray-50 border-gray-100'
+                          }`}>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await updateChecklistItem(req.id, template.id, !comp?.is_done)
+                                } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                              }}
+                              className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                                comp?.is_done ? 'bg-teal border-teal text-white' : 'border-gray-300'
+                              }`}>
+                              {comp?.is_done && <CheckCircle size={14} />}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-600 ${comp?.is_done ? 'text-teal line-through' : 'text-gray-800'}`}>{template.room_name}</p>
+                            </div>
+                            {comp?.photo_url ? (
+                              <img
+                                src={comp.photo_url}
+                                alt={template.room_name}
+                                onClick={() => window.open(comp.photo_url, '_blank')}
+                                className="w-10 h-10 rounded-lg object-cover border border-teal/30 cursor-pointer"
+                              />
+                            ) : (
+                              <label className="cursor-pointer">
+                                <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center hover:border-teal transition-all">
+                                  {uploading[uploadKey] ? (
+                                    <span className="text-xs">⏳</span>
+                                  ) : (
+                                    <Camera size={14} className="text-gray-400" />
+                                  )}
+                                </div>
+                                <input type="file" accept="image/*" className="hidden"
+                                  disabled={uploading[uploadKey]}
+                                  onChange={e => handlePhoto(req.id, template.id, e)} />
+                              </label>
+                            )}
+                          </div>
+                        )
+                      })}
+
+                      {/* Complete mission button */}
+                      {req.status === 'in_progress' && completedCount === tasks.length && tasks.length > 0 && (
+                        <button
+                          onClick={async () => {
+                            setCompleting(req.id)
+                            try {
+                              await completeRequest(req.id)
+                              toast('🎉 Mission terminée ! Bravo !', 'success')
+                            } catch (err) { toast(`❌ ${err.message}`, 'error') }
+                            finally { setCompleting(null) }
+                          }}
+                          disabled={completing === req.id}
+                          className="w-full py-3 text-sm font-700 text-white bg-green-500 rounded-xl hover:bg-green-600 transition-all disabled:opacity-60 mt-2">
+                          {completing === req.id ? '⏳...' : '🎉 Terminer la mission'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet 3 : Calendrier ── */}
+      {tab === 3 && (
+        <div>
+          <h2 className="text-lg font-800 text-gray-900 mb-4">📅 Calendrier</h2>
+          {(() => {
+            const today = new Date()
+            today.setHours(0,0,0,0)
+            const dayOfWeek = today.getDay()
+            const monday = new Date(today)
+            monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
+
+            // Generate 14 days (this week + next week)
+            const days = []
+            for (let i = 0; i < 14; i++) {
+              const d = new Date(monday)
+              d.setDate(monday.getDate() + i)
+              days.push(d)
+            }
+
+            const thisWeek = days.slice(0, 7)
+            const nextWeek = days.slice(7, 14)
+
+            // All confirmed missions (active + completed recent)
+            const allMissions = [...myActive]
+
+            function renderWeek(weekDays, title) {
+              return (
+                <div className="mb-6">
+                  <h3 className="text-sm font-700 text-gray-400 uppercase tracking-wide mb-3">{title}</h3>
+                  <div className="space-y-2">
+                    {weekDays.map(day => {
+                      const dateStr = day.toISOString().split('T')[0]
+                      const isToday = dateStr === new Date().toISOString().split('T')[0]
+                      const missions = allMissions.filter(r => r.scheduled_date === dateStr)
+                      return (
+                        <div key={dateStr} className={`card ${isToday ? 'border-teal border-2' : ''}`}>
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center text-xs font-800 flex-shrink-0 ${
+                              isToday ? 'bg-teal text-white' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              <span className="text-[10px] uppercase">{day.toLocaleDateString('fr-CA', { weekday: 'short' })}</span>
+                              <span>{day.getDate()}</span>
+                            </div>
+                            <p className={`text-sm font-700 ${isToday ? 'text-teal' : 'text-gray-700'}`}>
+                              {day.toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' })}
+                              {isToday && ' — Aujourd\'hui'}
+                            </p>
+                          </div>
+                          {missions.length === 0 ? (
+                            <p className="text-xs text-gray-300 pl-13 ml-[52px]">Aucune mission</p>
+                          ) : (
+                            <div className="space-y-2 ml-[52px]">
+                              {missions.map(req => {
+                                const ms = getMissionStatus(req)
+                                return (
+                                  <div key={req.id} onClick={() => { setTab(2); setOpenMission(req.id) }}
+                                    className="flex items-center gap-3 bg-teal/5 border border-teal/20 rounded-xl px-3 py-2 cursor-pointer hover:bg-teal/10 transition-all">
+                                    <span className="text-lg">{ms?.icon || '🔵'}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-700 text-gray-900 truncate">🏔 {req.chalet?.name}</p>
+                                      <p className="text-xs text-gray-400">{req.scheduled_time} • {req.chalet?.city} • {req.agreed_price} $</p>
+                                    </div>
+                                    <span className="text-[10px] font-700 text-teal bg-teal/10 px-2 py-0.5 rounded-full">{ms?.label}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <>
+                {myActive.length === 0 ? (
+                  <div className="card text-center py-12">
+                    <Calendar size={32} className="text-gray-200 mx-auto mb-3" />
+                    <p className="font-700 text-gray-500">Aucune mission planifiée</p>
+                    <p className="text-sm text-gray-400 mt-1">Vos missions confirmées apparaîtront ici.</p>
+                  </div>
+                ) : (
+                  <>
+                    {renderWeek(thisWeek, 'Cette semaine')}
+                    {renderWeek(nextWeek, 'Semaine prochaine')}
+                  </>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── Onglet 4 : Profil & Vérification ── */}
+      {tab === 4 && (
         <div>
           {/* Étapes */}
           <div className="flex gap-2 mb-5 flex-wrap">
@@ -1206,8 +1182,8 @@ export default function ProDashboard() {
         </div>
       )}
 
-      {/* ── Onglet 2 : Missions complétées ── */}
-      {tab === 2 && (
+      {/* ── Onglet 5 : Missions complétées ── */}
+      {tab === 5 && (
         <div>
           {/* Stats résumé */}
           <div className="grid grid-cols-3 gap-3 mb-6">
