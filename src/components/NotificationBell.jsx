@@ -137,8 +137,8 @@ export default function NotificationBell() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-600 text-gray-800 truncate">{notif.title}</p>
-                      {notif.body && (
-                        <p className="text-xs text-gray-400 truncate">{notif.body}</p>
+                      {(notif.message || notif.body) && (
+                        <p className="text-xs text-gray-400 truncate">{notif.message || notif.body}</p>
                       )}
                       <p className="text-[11px] text-gray-300 mt-0.5">{timeAgo(notif.created_at)}</p>
                     </div>

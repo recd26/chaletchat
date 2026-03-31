@@ -16,7 +16,7 @@ export async function sendNotification({ userId, type, title, body, requestId, s
     user_id: userId,
     type: type || 'new_message',
     title,
-    body: body || title,
+    message: body || title,
     request_id: requestId || null,
     sender_id: senderId || null,
   }

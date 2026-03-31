@@ -341,7 +341,7 @@ create table public.notifications (
   user_id     uuid references public.profiles(id) on delete cascade not null,
   type        text not null check (type in ('new_offer','offer_accepted','offer_declined','new_message','new_request_nearby','cleaning_completed')),
   title       text not null,
-  body        text,
+  message     text,
   request_id  uuid references public.cleaning_requests(id) on delete cascade,
   sender_id   uuid references public.profiles(id),
   read_at     timestamptz,

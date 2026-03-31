@@ -96,7 +96,7 @@ export function useMessages(requestId) {
           user_id: recipientId,
           type: 'new_message',
           title: 'Nouveau message',
-          body: content.length > 80 ? content.substring(0, 80) + '...' : content,
+          message: content.length > 80 ? content.substring(0, 80) + '...' : content,
           request_id: requestId,
           sender_id: user.id,
         })
