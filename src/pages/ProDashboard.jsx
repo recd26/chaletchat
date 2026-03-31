@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRequests, getMissionStatus } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import ChatPanel from '../components/ChatPanel'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
@@ -18,6 +17,7 @@ export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
   const { requests, loading, submitOffer, updateChecklistItem, uploadRoomPhoto, getOpenRequestsNearby, completeRequest, updateMissionStatus, submitReview, updateOffer } = useRequests()
   const { toasts, toast } = useToast()
+  const navigate = useNavigate()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab,        setTab]        = useState(0)
@@ -59,7 +59,6 @@ export default function ProDashboard() {
   const [uploading,  setUploading]  = useState({})
   const [starVal,    setStarVal]    = useState(0)
   const [starHover,  setStarHover]  = useState(0)
-  const [chatRequest, setChatRequest] = useState(null)
   const [openMission, setOpenMission] = useState(null) // id de la mission ouverte
   const [editRadius, setEditRadius] = useState(null)
   const [editingProfile, setEditingProfile] = useState(false)
@@ -273,7 +272,7 @@ export default function ProDashboard() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setChatRequest({ id: req.id, chaletName: req.chalet?.name }) }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/messages?chat=${req.id}`) }}
                           className="p-2 rounded-xl bg-teal/10 text-teal hover:bg-teal/20 transition-all"
                           title="Chat avec le propriétaire"
                         >
@@ -574,7 +573,7 @@ export default function ProDashboard() {
 
                         {/* Bouton chat */}
                         <button
-                          onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name })}
+                          onClick={() => navigate(`/messages?chat=${req.id}`)}
                           className="btn-secondary text-xs flex items-center gap-2"
                         >
                           <MessageSquare size={14} /> Envoyer un message au propriétaire
@@ -1396,14 +1395,6 @@ export default function ProDashboard() {
             })
           )}
         </div>
-      )}
-
-      {chatRequest && (
-        <ChatPanel
-          requestId={chatRequest.id}
-          chaletName={chatRequest.chaletName}
-          onClose={() => setChatRequest(null)}
-        />
       )}
 
       <Toast toasts={toasts} />

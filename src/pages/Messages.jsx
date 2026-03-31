@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useRequests } from '../hooks/useRequests'
 import { useMessages } from '../hooks/useMessages'
-import { MessageSquare, Send, ArrowLeft } from 'lucide-react'
+import { MessageSquare, Send, ArrowLeft, ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 // ── Panneau de chat inline (pas le slide-in) ─────────────────
-function InlineChat({ requestId, chaletName }) {
+function InlineChat({ requestId, chaletName, request, isPro }) {
   const { user } = useAuth()
   const { messages, loading, sendMessage } = useMessages(requestId)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const isCompleted = request?.status === 'completed'
 
   // Auto-scroll
   useEffect(() => {
@@ -36,8 +37,25 @@ function InlineChat({ requestId, chaletName }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-200 flex-shrink-0">
-        <h3 className="font-700 text-gray-900 text-sm">{chaletName}</h3>
+      <div className="px-5 py-3 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-700 text-gray-900 text-sm">{chaletName}</h3>
+            {request && (
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {request.scheduled_date ? new Date(request.scheduled_date).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' }) : ''}
+                {request.agreed_price ? ` — ${request.agreed_price} $` : ''}
+                {isCompleted && ' • ✅ Terminé'}
+              </p>
+            )}
+          </div>
+          <Link
+            to={isPro ? `/pro?tab=0&request=${requestId}` : `/dashboard?tab=2&request=${requestId}`}
+            className="flex items-center gap-1.5 text-xs font-600 text-teal hover:text-teal/80 bg-teal/10 px-3 py-1.5 rounded-lg transition-all"
+          >
+            <ExternalLink size={12} /> Voir la demande
+          </Link>
+        </div>
       </div>
 
       {/* Messages */}
@@ -78,23 +96,29 @@ function InlineChat({ requestId, chaletName }) {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="px-5 py-4 border-t border-gray-200 flex gap-2 flex-shrink-0">
-        <input
-          type="text"
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="Votre message..."
-          className="input-field flex-1"
-          autoFocus
-        />
-        <button
-          type="submit"
-          disabled={!text.trim() || sending}
-          className="btn-teal px-4 py-3 disabled:opacity-50"
-        >
-          <Send size={16} />
-        </button>
-      </form>
+      {isCompleted ? (
+        <div className="px-5 py-4 border-t border-gray-200 flex-shrink-0 text-center">
+          <p className="text-xs text-gray-400">✅ Mission terminée — conversation archivée</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="px-5 py-4 border-t border-gray-200 flex gap-2 flex-shrink-0">
+          <input
+            type="text"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Votre message..."
+            className="input-field flex-1"
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={!text.trim() || sending}
+            className="btn-teal px-4 py-3 disabled:opacity-50"
+          >
+            <Send size={16} />
+          </button>
+        </form>
+      )}
     </div>
   )
 }
@@ -178,7 +202,7 @@ export default function Messages() {
             <ArrowLeft size={16} /> Retour aux conversations
           </button>
           <div className="flex-1 min-h-0">
-            <InlineChat requestId={selectedId} chaletName={getContactName(selected)} />
+            <InlineChat requestId={selectedId} chaletName={getContactName(selected)} request={selected} isPro={isPro} />
           </div>
         </div>
       )}
@@ -261,7 +285,7 @@ export default function Messages() {
       {/* ── Zone de chat (desktop) ── */}
       <div className="hidden md:flex flex-1 flex-col">
         {selected ? (
-          <InlineChat requestId={selectedId} chaletName={getContactName(selected)} />
+          <InlineChat requestId={selectedId} chaletName={getContactName(selected)} request={selected} isPro={isPro} />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">

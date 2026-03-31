@@ -6,7 +6,6 @@ import { useRequests, getMissionStatus } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Plus, Lock, Eye, EyeOff, MessageSquare, CreditCard, X, Star, MapPin, Clock, Languages, CheckCircle, Camera, Home, Bed, Bath } from 'lucide-react'
-import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
@@ -39,7 +38,6 @@ export default function Dashboard() {
     setSearchParams({}, { replace: true })
   }, [searchParams])
   const [showCode, setShowCode] = useState({})
-  const [chatRequest, setChatRequest] = useState(null)
   const [savedCard, setSavedCard] = useState(
     profile?.stripe_customer_id ? { last4: '4242', brand: 'Visa', name: profile.first_name } : null
   )
@@ -835,7 +833,7 @@ export default function Dashboard() {
                                     className="text-xs font-600 bg-white text-gray-500 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all">
                                     Profil
                                   </button>
-                                  <button onClick={() => setChatRequest({ id: req.id, chaletName: chalet?.name })}
+                                  <button onClick={() => navigate(`/messages?chat=${req.id}`)}
                                     className="text-xs font-600 bg-teal text-white px-3 py-1.5 rounded-lg hover:bg-teal/90 transition-all">
                                     💬 Chat
                                   </button>
@@ -1210,14 +1208,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      )}
-
-      {chatRequest && (
-        <ChatPanel
-          requestId={chatRequest.id}
-          chaletName={chatRequest.chaletName}
-          onClose={() => setChatRequest(null)}
-        />
       )}
 
       {/* Modal profil professionnel */}
