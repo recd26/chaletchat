@@ -59,30 +59,34 @@ export function useNotifications() {
     setNotifications(prev =>
       prev.map(n => n.id === notificationId ? { ...n, read_at: now } : n)
     )
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('notifications')
       .update({ read_at: now })
       .eq('id', notificationId)
-    if (error) {
-      console.error('markAsRead failed:', error)
+      .eq('user_id', user.id)
+      .select()
+    if (error || !data || data.length === 0) {
+      console.error('markAsRead failed:', error?.message || 'aucune ligne modifiée (RLS)')
       await fetchNotifications()
     }
   }
 
   async function markAllAsRead() {
     const now = new Date().toISOString()
-    // Optimistic update — update UI immediately
+    const unreadIds = notifications.filter(n => !n.read_at).map(n => n.id)
+    if (unreadIds.length === 0) return
+    // Optimistic update
     setNotifications(prev =>
       prev.map(n => n.read_at ? n : { ...n, read_at: now })
     )
-    const unreadIds = notifications.filter(n => !n.read_at).map(n => n.id)
-    if (unreadIds.length === 0) return
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('notifications')
       .update({ read_at: now })
       .in('id', unreadIds)
-    if (error) {
-      console.error('markAllAsRead failed:', error)
+      .eq('user_id', user.id)
+      .select()
+    if (error || !data || data.length === 0) {
+      console.error('markAllAsRead failed:', error?.message || 'aucune ligne modifiée (RLS)')
       await fetchNotifications()
     }
   }

@@ -335,14 +335,6 @@ create policy "Participants update messages" on public.messages
     )
   );
 
--- Notifications
-create policy "Users see own notifications" on public.notifications
-  for select using (auth.uid() = user_id);
-create policy "Users update own notifications" on public.notifications
-  for update using (auth.uid() = user_id);
-create policy "Authenticated users create notifications" on public.notifications
-  for insert with check (true);
-
 -- ─── NOTIFICATIONS ──────────────────────────────────────────
 create table public.notifications (
   id          uuid default uuid_generate_v4() primary key,
@@ -355,6 +347,15 @@ create table public.notifications (
   read_at     timestamptz,
   created_at  timestamptz default now()
 );
+
+-- Notifications RLS (après la création de la table)
+create policy "Users see own notifications" on public.notifications
+  for select using (auth.uid() = user_id);
+create policy "Users update own notifications" on public.notifications
+  for update using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+create policy "Authenticated users create notifications" on public.notifications
+  for insert with check (true);
 
 -- ─── STORAGE BUCKETS ─────────────────────────────────────────
 -- 1. "cleaning-photos"  (public)   → photos des pièces après ménage
