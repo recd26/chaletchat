@@ -12,7 +12,8 @@ import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
-const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées']
+const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées', '💬 Messages']
+const TAB_MESSAGES = 3
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
@@ -28,25 +29,37 @@ export default function ProDashboard() {
   useEffect(() => {
     const paramTab = searchParams.get('tab')
     const paramReq = searchParams.get('request')
-    if (paramTab === null && !paramReq) return
-    if (paramTab !== null) setTab(parseInt(paramTab, 10))
+    const paramChat = searchParams.get('chat')
+    if (paramTab === null && !paramReq && !paramChat) return
+
+    if (paramTab === 'messages') {
+      setTab(TAB_MESSAGES)
+    } else if (paramTab !== null) {
+      setTab(parseInt(paramTab, 10))
+    }
+
+    // Ouvrir une conversation depuis une notification
+    if (paramChat) {
+      setTab(TAB_MESSAGES)
+      const req = requests.find(r => r.id === paramChat)
+      setChatRequest({ id: paramChat, chaletName: req?.chalet?.name || 'Conversation' })
+    }
+
     if (paramReq) {
       setExpiredRequest(null) // reset
       setHighlightRequest(paramReq)
-      // Vérifier après le chargement si la demande existe encore dans la liste
       setTimeout(() => {
         const found = document.getElementById(`request-${paramReq}`)
         if (found) {
           found.scrollIntoView({ behavior: 'smooth', block: 'center' })
         } else if (!loading) {
-          // Demande non trouvée = déjà assignée à un autre pro
           setExpiredRequest(paramReq)
         }
       }, 800)
       setTimeout(() => setHighlightRequest(null), 5000)
     }
     setSearchParams({}, { replace: true })
-  }, [searchParams])
+  }, [searchParams, requests])
 
   // Vérifier aussi quand les requests finissent de charger
   useEffect(() => {
@@ -1388,6 +1401,48 @@ export default function ProDashboard() {
               )
             })
           )}
+        </div>
+      )}
+
+      {/* ═══════ TAB 3 : Messages ═══════ */}
+      {tab === TAB_MESSAGES && (
+        <div>
+          <h2 className="text-lg font-800 text-gray-900 mb-4">💬 Conversations</h2>
+          {(() => {
+            const myMissions = requests.filter(r =>
+              r.assigned_pro_id === profile?.id &&
+              ['confirmed', 'in_progress', 'completed'].includes(r.status)
+            )
+            if (myMissions.length === 0) return (
+              <div className="card text-center py-12">
+                <MessageSquare size={32} className="text-gray-200 mx-auto mb-3" />
+                <p className="font-700 text-gray-500">Aucune conversation</p>
+                <p className="text-sm text-gray-400 mt-1">Les conversations apparaîtront ici quand une offre est acceptée.</p>
+              </div>
+            )
+            return (
+              <div className="space-y-3">
+                {myMissions.map(req => (
+                  <div key={req.id}
+                    onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name || 'Chalet' })}
+                    className="card flex items-center gap-4 cursor-pointer hover:border-teal hover:shadow-md transition-all">
+                    <div className="w-10 h-10 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare size={18} className="text-teal" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-700 text-gray-900 text-sm truncate">
+                        {req.chalet?.name || 'Chalet'} — {req.chalet?.city || ''}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {req.scheduled_date} • {req.status === 'completed' ? '✅ Terminé' : '🟢 En cours'}
+                      </p>
+                    </div>
+                    <span className="text-xs text-teal font-600">Ouvrir →</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
       )}
 

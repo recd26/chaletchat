@@ -23,6 +23,7 @@ const NAV_MAP = {
   // Proprio reçoit
   new_offer:          { path: '/dashboard', tab: 2 },   // Demandes
   cleaning_completed: { path: '/dashboard', tab: 3 },   // Historique
+  new_message:        { chat: true },                    // Ouvre le chat (path dépend du rôle)
   // Pro reçoit
   new_request_nearby: { path: '/pro', tab: 0 },         // Demandes à proximité
   offer_accepted:     { path: '/pro', tab: 0 },
@@ -75,15 +76,23 @@ export default function NotificationBell() {
   function handleClickNotif(notif) {
     if (!notif.read_at) markAsRead(notif.id)
 
-    // Navigation vers la demande
     const nav = NAV_MAP[notif.type]
-    if (nav) {
-      const params = new URLSearchParams()
-      params.set('tab', String(nav.tab))
-      if (notif.request_id) params.set('request', notif.request_id)
-      navigate(`${nav.path}?${params.toString()}`)
+    if (!nav) return setOpen(false)
+
+    // Message → ouvrir le chat dans le bon dashboard
+    if (nav.chat && notif.request_id) {
+      const path = profile?.role === 'pro' ? '/pro' : '/dashboard'
+      navigate(`${path}?tab=messages&chat=${notif.request_id}`)
       setOpen(false)
+      return
     }
+
+    // Autres types → navigation standard
+    const params = new URLSearchParams()
+    params.set('tab', String(nav.tab))
+    if (notif.request_id) params.set('request', notif.request_id)
+    navigate(`${nav.path}?${params.toString()}`)
+    setOpen(false)
   }
 
   return (
