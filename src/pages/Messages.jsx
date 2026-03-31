@@ -166,25 +166,23 @@ export default function Messages() {
     return { label: '🟡 Confirmé', cls: 'bg-amber-50 text-amber-600' }
   }
 
-  // ── Mobile : si une conversation est sélectionnée, montrer le chat ──
-  if (selectedId && selected) {
-    return (
-      <div className="h-[calc(100vh-64px)] flex flex-col md:hidden">
-        <button
-          onClick={() => setSelectedId(null)}
-          className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 text-sm font-600 text-gray-500 hover:text-gray-800"
-        >
-          <ArrowLeft size={16} /> Retour aux conversations
-        </button>
-        <div className="flex-1">
-          <InlineChat requestId={selectedId} chaletName={getContactName(selected)} />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="h-[calc(100vh-64px)] flex">
+      {/* ── Mobile : chat plein écran quand une conversation est sélectionnée ── */}
+      {selectedId && selected && (
+        <div className="flex flex-col w-full md:hidden">
+          <button
+            onClick={() => setSelectedId(null)}
+            className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 text-sm font-600 text-gray-500 hover:text-gray-800 flex-shrink-0"
+          >
+            <ArrowLeft size={16} /> Retour aux conversations
+          </button>
+          <div className="flex-1 min-h-0">
+            <InlineChat requestId={selectedId} chaletName={getContactName(selected)} />
+          </div>
+        </div>
+      )}
+
       {/* ── Sidebar : liste des conversations ── */}
       <div className={`w-full md:w-96 md:border-r border-gray-200 flex flex-col bg-white flex-shrink-0 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="px-5 py-4 border-b border-gray-200 flex-shrink-0">
