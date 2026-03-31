@@ -61,6 +61,11 @@ export default function ProDashboard() {
   const [openMission, setOpenMission] = useState(null) // id de la mission ouverte
   const [editRadius, setEditRadius] = useState(null)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date(); const dow = d.getDay()
+    const m = new Date(d); m.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1)); m.setHours(0,0,0,0)
+    return m
+  })
   const [editingProfile, setEditingProfile] = useState(false)
   const [editAddr,     setEditAddr]     = useState('')
   const [editCity,     setEditCity]     = useState('')
@@ -793,36 +798,40 @@ export default function ProDashboard() {
           {(() => {
             const now = new Date()
             const todayStr = now.toISOString().split('T')[0]
-            // ── Calendrier mensuel (style Airbnb) ──
+
+            // ── Calendrier mensuel ──
             const year = calMonth.getFullYear()
             const month = calMonth.getMonth()
             const firstDay = new Date(year, month, 1)
             const lastDay = new Date(year, month + 1, 0)
-            const startDow = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1 // lundi = 0
+            const startDow = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1
             const daysInMonth = lastDay.getDate()
 
-            // Missions indexées par date
+            // Index missions confirmées par date (teal)
             const missionsByDate = {}
             myActive.forEach(r => {
               if (!missionsByDate[r.scheduled_date]) missionsByDate[r.scheduled_date] = []
               missionsByDate[r.scheduled_date].push(r)
             })
 
-            // Grille calendrier (6 rangées max × 7 jours)
+            // Index demandes ouvertes par date (coral) pour voir les conflits
+            const openByDate = {}
+            openReqs.forEach(r => {
+              if (!openByDate[r.scheduled_date]) openByDate[r.scheduled_date] = []
+              openByDate[r.scheduled_date].push(r)
+            })
+
+            // Grille calendrier
             const calCells = []
             for (let i = 0; i < startDow; i++) calCells.push(null)
             for (let d = 1; d <= daysInMonth; d++) calCells.push(d)
             while (calCells.length % 7 !== 0) calCells.push(null)
 
-            // ── Vue semaine Outlook ──
-            const dayOfWeek = now.getDay()
-            const monday = new Date(now)
-            monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-            monday.setHours(0, 0, 0, 0)
+            // ── Vue semaine ──
             const weekDays = []
             for (let i = 0; i < 7; i++) {
-              const d = new Date(monday)
-              d.setDate(monday.getDate() + i)
+              const d = new Date(weekStart)
+              d.setDate(weekStart.getDate() + i)
               weekDays.push(d)
             }
             const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
@@ -833,64 +842,152 @@ export default function ProDashboard() {
               return h + (m || 0) / 60
             }
 
+            function goToCurrentWeek() {
+              const d = new Date(); const dow = d.getDay()
+              const m = new Date(d); m.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1)); m.setHours(0,0,0,0)
+              setWeekStart(m)
+            }
+
+            // Naviguer la vue semaine quand on clique un jour dans le calendrier
+            function handleCalDayClick(dateStr) {
+              const clicked = new Date(dateStr + 'T00:00:00')
+              const dow = clicked.getDay()
+              const mon = new Date(clicked)
+              mon.setDate(clicked.getDate() - (dow === 0 ? 6 : dow - 1))
+              mon.setHours(0,0,0,0)
+              setWeekStart(mon)
+              // Scroll vers la vue semaine
+              setTimeout(() => {
+                document.getElementById('week-view')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }, 100)
+            }
+
+            // Vérifier si weekStart est la semaine courante
+            const currentMonday = new Date(now)
+            const cdow = now.getDay()
+            currentMonday.setDate(now.getDate() - (cdow === 0 ? 6 : cdow - 1))
+            currentMonday.setHours(0,0,0,0)
+            const isCurrentWeek = weekStart.getTime() === currentMonday.getTime()
+
+            // Label de la semaine affichée
+            const weekEnd = new Date(weekStart)
+            weekEnd.setDate(weekStart.getDate() + 6)
+            const weekLabel = `${weekStart.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' })} — ${weekEnd.toLocaleDateString('fr-CA', { day: 'numeric', month: 'short', year: 'numeric' })}`
+
             return (
               <>
-                {myActive.length === 0 ? (
-                  <div className="card text-center py-12">
-                    <Calendar size={32} className="text-gray-200 mx-auto mb-3" />
-                    <p className="font-700 text-gray-500">Aucune mission planifiée</p>
-                    <p className="text-sm text-gray-400 mt-1">Vos missions confirmées apparaîtront ici.</p>
+                {/* ═══ Calendrier mensuel ═══ */}
+                <div className="card mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}
+                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all text-lg">
+                      ←
+                    </button>
+                    <h2 className="text-lg font-800 text-gray-900 capitalize">
+                      {calMonth.toLocaleDateString('fr-CA', { month: 'long', year: 'numeric' })}
+                    </h2>
+                    <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}
+                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all text-lg">
+                      →
+                    </button>
                   </div>
-                ) : (
-                  <>
-                    {/* ═══ Calendrier mensuel style Airbnb ═══ */}
-                    <div className="card mb-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}
-                          className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all text-lg">
-                          ←
-                        </button>
-                        <h2 className="text-lg font-800 text-gray-900 capitalize">
-                          {calMonth.toLocaleDateString('fr-CA', { month: 'long', year: 'numeric' })}
-                        </h2>
-                        <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}
-                          className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all text-lg">
-                          →
-                        </button>
-                      </div>
 
-                      {/* En-têtes jours */}
-                      <div className="grid grid-cols-7 mb-1">
-                        {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(d => (
-                          <div key={d} className="text-center text-[10px] font-700 text-gray-400 uppercase py-1">{d}</div>
-                        ))}
-                      </div>
+                  {/* En-têtes jours */}
+                  <div className="grid grid-cols-7 mb-1">
+                    {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(d => (
+                      <div key={d} className="text-center text-[10px] font-700 text-gray-400 uppercase py-1">{d}</div>
+                    ))}
+                  </div>
 
-                      {/* Grille des jours */}
-                      <div className="grid grid-cols-7">
-                        {calCells.map((day, idx) => {
-                          if (day === null) return <div key={`e-${idx}`} className="h-14" />
-                          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-                          const isToday = dateStr === todayStr
-                          const missions = missionsByDate[dateStr] || []
-                          const hasMission = missions.length > 0
-                          const isPast = new Date(dateStr) < new Date(todayStr)
+                  {/* Grille des jours */}
+                  <div className="grid grid-cols-7">
+                    {calCells.map((day, idx) => {
+                      if (day === null) return <div key={`e-${idx}`} className="h-16" />
+                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                      const isToday = dateStr === todayStr
+                      const missions = missionsByDate[dateStr] || []
+                      const openItems = openByDate[dateStr] || []
+                      const hasMission = missions.length > 0
+                      const hasOpen = openItems.length > 0
+                      const isPast = new Date(dateStr) < new Date(todayStr)
+                      const hasAny = hasMission || hasOpen
 
+                      return (
+                        <div key={dateStr}
+                          onClick={() => hasAny && handleCalDayClick(dateStr)}
+                          className={`h-16 flex flex-col items-center justify-center rounded-xl mx-0.5 my-0.5 transition-all relative ${
+                            isToday ? 'bg-teal text-white font-800'
+                            : hasMission && hasOpen ? 'bg-amber-50 border border-amber-300 text-amber-700 font-800 cursor-pointer hover:bg-amber-100'
+                            : hasMission ? 'bg-teal/10 text-teal font-800 cursor-pointer hover:bg-teal/20'
+                            : hasOpen ? 'bg-coral/10 text-coral font-700 cursor-pointer hover:bg-coral/20'
+                            : isPast ? 'text-gray-300'
+                            : 'text-gray-600 hover:bg-gray-50'
+                          }`}>
+                          <span className="text-sm">{day}</span>
+                          {(hasMission || hasOpen) && (
+                            <div className="flex gap-0.5 mt-0.5">
+                              {missions.slice(0, 2).map((_, i) => (
+                                <div key={`m${i}`} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-teal'}`} />
+                              ))}
+                              {openItems.slice(0, 2).map((_, i) => (
+                                <div key={`o${i}`} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white/60' : 'bg-coral'}`} />
+                              ))}
+                            </div>
+                          )}
+                          {hasMission && hasOpen && (
+                            <span className="absolute -top-0.5 -right-0.5 text-[8px]">⚠️</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Légende */}
+                  <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
+                    <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-teal" /> Confirmée</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-coral" /> Demande ouverte</span>
+                    <span className="flex items-center gap-1.5"><span className="text-[9px]">⚠️</span> Conflit potentiel</span>
+                  </div>
+                </div>
+
+                {/* ═══ Vue à la semaine (style Outlook) ═══ */}
+                <div className="card overflow-hidden" id="week-view">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d) }}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all">←</button>
+                      <h3 className="font-800 text-gray-900 text-sm">📋 {weekLabel}</h3>
+                      <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d) }}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all">→</button>
+                    </div>
+                    {!isCurrentWeek && (
+                      <button onClick={goToCurrentWeek}
+                        className="text-xs font-700 text-teal bg-teal/10 px-3 py-1.5 rounded-lg hover:bg-teal/20 transition-all">
+                        Aujourd'hui
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto -mx-4 px-4">
+                    <div className="min-w-[700px]">
+                      {/* En-têtes des jours */}
+                      <div className="grid grid-cols-8 border-b border-gray-200">
+                        <div className="py-2 px-1" />
+                        {weekDays.map(d => {
+                          const ds = d.toISOString().split('T')[0]
+                          const isToday = ds === todayStr
+                          const dayMissions = missionsByDate[ds] || []
+                          const dayOpen = openByDate[ds] || []
                           return (
-                            <div key={dateStr}
-                              onClick={() => { if (hasMission) { setTab(2); setOpenMission(missions[0].id) } }}
-                              className={`h-14 flex flex-col items-center justify-center rounded-xl mx-0.5 my-0.5 transition-all relative ${
-                                isToday ? 'bg-teal text-white font-800'
-                                : hasMission ? 'bg-teal/10 text-teal font-800 cursor-pointer hover:bg-teal/20'
-                                : isPast ? 'text-gray-300'
-                                : 'text-gray-600 hover:bg-gray-50'
-                              }`}>
-                              <span className="text-sm">{day}</span>
-                              {hasMission && (
-                                <div className="flex gap-0.5 mt-0.5">
-                                  {missions.slice(0, 3).map((_, i) => (
-                                    <div key={i} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-teal'}`} />
-                                  ))}
+                            <div key={ds} className={`py-2 px-1 text-center border-l border-gray-100 ${isToday ? 'bg-teal/5' : ''}`}>
+                              <p className={`text-[10px] uppercase font-700 ${isToday ? 'text-teal' : 'text-gray-400'}`}>
+                                {d.toLocaleDateString('fr-CA', { weekday: 'short' })}
+                              </p>
+                              <p className={`text-sm font-800 ${isToday ? 'text-teal' : 'text-gray-700'}`}>{d.getDate()}</p>
+                              {(dayMissions.length > 0 || dayOpen.length > 0) && (
+                                <div className="flex justify-center gap-0.5 mt-0.5">
+                                  {dayMissions.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-teal" />}
+                                  {dayOpen.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-coral" />}
                                 </div>
                               )}
                             </div>
@@ -898,81 +995,57 @@ export default function ProDashboard() {
                         })}
                       </div>
 
-                      {/* Légende */}
-                      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
-                        <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-teal" /> Mission planifiée</span>
-                        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-teal text-white text-[8px] flex items-center justify-center font-800">{now.getDate()}</div> Aujourd'hui</span>
-                      </div>
-                    </div>
-
-                    {/* ═══ Vue semaine style Outlook (8h-17h) ═══ */}
-                    <div className="card overflow-hidden">
-                      <h3 className="font-800 text-gray-900 mb-4">📋 Semaine en cours</h3>
-
-                      <div className="overflow-x-auto -mx-4 px-4">
-                        <div className="min-w-[700px]">
-                          {/* En-têtes des jours */}
-                          <div className="grid grid-cols-8 border-b border-gray-200">
-                            <div className="py-2 px-1" /> {/* colonne heures */}
-                            {weekDays.map(d => {
-                              const ds = d.toISOString().split('T')[0]
-                              const isToday = ds === todayStr
-                              return (
-                                <div key={ds} className={`py-2 px-1 text-center border-l border-gray-100 ${isToday ? 'bg-teal/5' : ''}`}>
-                                  <p className={`text-[10px] uppercase font-700 ${isToday ? 'text-teal' : 'text-gray-400'}`}>
-                                    {d.toLocaleDateString('fr-CA', { weekday: 'short' })}
-                                  </p>
-                                  <p className={`text-sm font-800 ${isToday ? 'text-teal' : 'text-gray-700'}`}>{d.getDate()}</p>
-                                </div>
-                              )
-                            })}
+                      {/* Grille horaire */}
+                      {hours.map(hour => (
+                        <div key={hour} className="grid grid-cols-8 border-b border-gray-50" style={{ minHeight: '48px' }}>
+                          <div className="py-1 px-1 flex items-start justify-end pr-2">
+                            <span className="text-[10px] font-600 text-gray-300">{hour}:00</span>
                           </div>
+                          {weekDays.map(d => {
+                            const ds = d.toISOString().split('T')[0]
+                            const isToday = ds === todayStr
+                            const dayMissions = missionsByDate[ds] || []
+                            const dayOpen = openByDate[ds] || []
+                            const missionsInSlot = dayMissions.filter(r => {
+                              const t = parseTime(r.scheduled_time); return t !== null && t >= hour && t < hour + 1
+                            })
+                            const openInSlot = dayOpen.filter(r => {
+                              const t = parseTime(r.scheduled_time); return t !== null && t >= hour && t < hour + 1
+                            })
 
-                          {/* Grille horaire */}
-                          {hours.map(hour => (
-                            <div key={hour} className="grid grid-cols-8 border-b border-gray-50" style={{ minHeight: '48px' }}>
-                              {/* Label heure */}
-                              <div className="py-1 px-1 flex items-start justify-end pr-2">
-                                <span className="text-[10px] font-600 text-gray-300">{hour}:00</span>
-                              </div>
-
-                              {/* Cellules par jour */}
-                              {weekDays.map(d => {
-                                const ds = d.toISOString().split('T')[0]
-                                const isToday = ds === todayStr
-                                const dayMissions = missionsByDate[ds] || []
-                                const inSlot = dayMissions.filter(r => {
-                                  const t = parseTime(r.scheduled_time)
-                                  return t !== null && t >= hour && t < hour + 1
-                                })
-
-                                return (
-                                  <div key={`${ds}-${hour}`}
-                                    className={`border-l border-gray-100 px-0.5 py-0.5 ${isToday ? 'bg-teal/[0.03]' : ''}`}>
-                                    {inSlot.map(req => {
-                                      const ms = getMissionStatus(req)
-                                      const estH = parseFloat(req.estimated_hours) || 1
-                                      return (
-                                        <div key={req.id}
-                                          onClick={() => { setTab(2); setOpenMission(req.id) }}
-                                          className="bg-teal text-white rounded-lg px-1.5 py-1 cursor-pointer hover:bg-teal/90 transition-all"
-                                          style={{ minHeight: `${Math.max(estH, 1) * 44}px` }}>
-                                          <p className="text-[10px] font-700 truncate">🏔 {req.chalet?.name}</p>
-                                          <p className="text-[9px] opacity-80">{req.scheduled_time} • {req.agreed_price}$</p>
-                                          {estH > 1 && <p className="text-[9px] opacity-70">{ms?.icon} {ms?.label}</p>}
-                                        </div>
-                                      )
-                                    })}
+                            return (
+                              <div key={`${ds}-${hour}`}
+                                className={`border-l border-gray-100 px-0.5 py-0.5 ${isToday ? 'bg-teal/[0.03]' : ''}`}>
+                                {missionsInSlot.map(req => {
+                                  const ms = getMissionStatus(req)
+                                  const estH = parseFloat(req.estimated_hours) || 1
+                                  return (
+                                    <div key={req.id}
+                                      onClick={() => { setTab(2); setOpenMission(req.id) }}
+                                      className="bg-teal text-white rounded-lg px-1.5 py-1 cursor-pointer hover:bg-teal/90 transition-all mb-0.5"
+                                      style={{ minHeight: `${Math.max(estH, 1) * 44}px` }}>
+                                      <p className="text-[10px] font-700 truncate">🏔 {req.chalet?.name}</p>
+                                      <p className="text-[9px] opacity-80">{req.scheduled_time} • {req.agreed_price}$</p>
+                                      {estH > 1 && <p className="text-[9px] opacity-70">{ms?.icon} {ms?.label}</p>}
+                                    </div>
+                                  )
+                                })}
+                                {openInSlot.map(req => (
+                                  <div key={req.id}
+                                    onClick={() => { setTab(0) }}
+                                    className="bg-coral/10 border border-coral/30 text-coral rounded-lg px-1.5 py-1 cursor-pointer hover:bg-coral/20 transition-all mb-0.5">
+                                    <p className="text-[10px] font-700 truncate">📍 {req.chalet?.name}</p>
+                                    <p className="text-[9px] opacity-80">{req.scheduled_time} • {req.suggested_budget || '?'}$</p>
                                   </div>
-                                )
-                              })}
-                            </div>
-                          ))}
+                                ))}
+                              </div>
+                            )
+                          })}
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  </>
-                )}
+                  </div>
+                </div>
               </>
             )
           })()}
