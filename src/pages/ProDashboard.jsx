@@ -286,7 +286,16 @@ export default function ProDashboard() {
                           {req.chalet?.city} — {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { weekday:'short', day:'numeric', month:'short' }) : ''} à {req.scheduled_time}
                         </p>
                       </div>
-                      <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setChatRequest({ id: req.id, chaletName: req.chalet?.name }) }}
+                          className="p-2 rounded-xl bg-teal/10 text-teal hover:bg-teal/20 transition-all"
+                          title="Chat avec le propriétaire"
+                        >
+                          <MessageSquare size={16} />
+                        </button>
+                        <p className="text-xl font-800 text-teal">{req.agreed_price} $</p>
+                      </div>
                     </div>
 
                     {/* Timeline de mission */}
@@ -1412,7 +1421,7 @@ export default function ProDashboard() {
             const myMissions = requests.filter(r =>
               r.assigned_pro_id === profile?.id &&
               ['confirmed', 'in_progress', 'completed'].includes(r.status)
-            )
+            ).sort((a, b) => new Date(b.updated_at || b.scheduled_date) - new Date(a.updated_at || a.scheduled_date))
             if (myMissions.length === 0) return (
               <div className="card text-center py-12">
                 <MessageSquare size={32} className="text-gray-200 mx-auto mb-3" />
@@ -1422,24 +1431,42 @@ export default function ProDashboard() {
             )
             return (
               <div className="space-y-3">
-                {myMissions.map(req => (
-                  <div key={req.id}
-                    onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name || 'Chalet' })}
-                    className="card flex items-center gap-4 cursor-pointer hover:border-teal hover:shadow-md transition-all">
-                    <div className="w-10 h-10 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare size={18} className="text-teal" />
+                {myMissions.map(req => {
+                  const statusLabel = req.status === 'completed' ? '✅ Terminé'
+                    : req.status === 'in_progress' ? '🧹 En cours'
+                    : '🟡 Confirmé'
+                  const ms = getMissionStatus(req)
+                  return (
+                    <div key={req.id}
+                      onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name || 'Chalet' })}
+                      className="card cursor-pointer hover:border-teal hover:shadow-md transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-11 h-11 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0 text-lg">
+                          🏔
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-700 text-gray-900 text-sm truncate">
+                              {req.chalet?.name || 'Chalet'}
+                            </p>
+                            <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              req.status === 'completed' ? 'bg-gray-100 text-gray-500'
+                              : 'bg-teal/10 text-teal'
+                            }`}>{statusLabel}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 truncate mt-0.5">
+                            💰 {req.agreed_price} $ — {req.chalet?.city || ''}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            📅 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' }) : ''}
+                            {ms ? ` • ${ms.icon} ${ms.label}` : ''}
+                          </p>
+                        </div>
+                        <MessageSquare size={18} className="text-teal flex-shrink-0" />
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-700 text-gray-900 text-sm truncate">
-                        {req.chalet?.name || 'Chalet'} — {req.chalet?.city || ''}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">
-                        {req.scheduled_date} • {req.status === 'completed' ? '✅ Terminé' : '🟢 En cours'}
-                      </p>
-                    </div>
-                    <span className="text-xs text-teal font-600">Ouvrir →</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )
           })()}
