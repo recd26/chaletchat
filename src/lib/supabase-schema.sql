@@ -537,14 +537,10 @@ ALTER TABLE public.notifications
   ));
 
 -- ─── POLITIQUE RLS : l'admin peut modifier tous les profils ──
--- OPTION 1 (plus simple) : politique RLS basée sur l'email admin
+-- Utilise auth.jwt() pour lire l'email sans accéder à auth.users
 create policy "Admin can update all profiles" on public.profiles
   for update using (
-    exists (
-      select 1 from auth.users
-      where auth.users.id = auth.uid()
-        and auth.users.email = 'ouellet.david@outlook.com'
-    )
+    auth.jwt()->>'email' = 'ouellet.david@outlook.com'
   );
 
 -- ─── FONCTION ADMIN : approuver / refuser un compte ─────────
@@ -560,13 +556,11 @@ as $$
 declare
   caller_email text;
 begin
-  -- Récupérer l'email de l'appelant
-  select email into caller_email
-  from auth.users
-  where id = auth.uid();
+  -- Récupérer l'email depuis le JWT (pas besoin d'accéder à auth.users)
+  caller_email := auth.jwt()->>'email';
 
   -- Vérifier que l'appelant est admin
-  if caller_email is null or caller_email not in ('ouellet.david@outlook.com') then
+  if caller_email is null or caller_email != 'ouellet.david@outlook.com' then
     raise exception 'Accès refusé : vous n''êtes pas administrateur';
   end if;
 
