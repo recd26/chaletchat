@@ -55,18 +55,17 @@ export function useNotifications() {
 
   async function markAsRead(notificationId) {
     const now = new Date().toISOString()
-    // Optimistic update
     setNotifications(prev =>
       prev.map(n => n.id === notificationId ? { ...n, read_at: now } : n)
     )
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ read_at: now })
-      .eq('id', notificationId)
-      .eq('user_id', user.id)
-      .select()
-    if (error || !data || data.length === 0) {
-      console.error('markAsRead failed:', error?.message || 'aucune ligne modifiée (RLS)')
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: now })
+        .eq('id', notificationId)
+      if (error) throw error
+    } catch (err) {
+      console.error('markAsRead failed:', err)
       await fetchNotifications()
     }
   }
@@ -75,18 +74,19 @@ export function useNotifications() {
     const now = new Date().toISOString()
     const unreadIds = notifications.filter(n => !n.read_at).map(n => n.id)
     if (unreadIds.length === 0) return
-    // Optimistic update
     setNotifications(prev =>
       prev.map(n => n.read_at ? n : { ...n, read_at: now })
     )
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ read_at: now })
-      .in('id', unreadIds)
-      .eq('user_id', user.id)
-      .select()
-    if (error || !data || data.length === 0) {
-      console.error('markAllAsRead failed:', error?.message || 'aucune ligne modifiée (RLS)')
+    try {
+      // Mettre à jour toutes les non-lues de cet utilisateur
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: now })
+        .is('read_at', null)
+        .eq('user_id', user.id)
+      if (error) throw error
+    } catch (err) {
+      console.error('markAllAsRead failed:', err)
       await fetchNotifications()
     }
   }
