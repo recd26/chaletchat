@@ -4,14 +4,14 @@ import { useAuth } from '../hooks/useAuth'
 import { useRequests, getMissionStatus } from '../hooks/useRequests'
 import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
-import { Camera, CheckCircle, Star, Map, List, MessageSquare, Upload, ChevronDown, ChevronUp } from 'lucide-react'
+import { Camera, CheckCircle, Star, MessageSquare, Upload, ChevronDown, ChevronUp, Calendar } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
-const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées']
+const TABS = ['📍 Demandes', '⏳ Offres envoyées', '✅ Confirmées', '📅 Calendrier', '👤 Profil', '📋 Historique']
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
@@ -21,7 +21,7 @@ export default function ProDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab,        setTab]        = useState(0)
-  const [viewMode,   setViewMode]   = useState('list') // 'list' or 'map'
+  // viewMode removed — map always visible on tab 0
   const [highlightRequest, setHighlightRequest] = useState(null)
 
   // Lire les search params pour navigation depuis les notifications
@@ -136,6 +136,11 @@ export default function ProDashboard() {
   const myCompleted = useMemo(() => requests.filter(r =>
     r.assigned_pro_id === profile?.id && r.status === 'completed'
   ), [requests, profile])
+  // Mes offres en attente
+  const myPendingOffers = useMemo(() => requests.filter(r =>
+    r.status === 'open' && r.offers?.some(o => o.pro_id === profile?.id && o.status === 'pending')
+  ), [requests, profile])
+
   const totalEarned = useMemo(() => myCompleted.reduce((sum, r) => sum + (parseFloat(r.agreed_price) || 0), 0), [myCompleted])
   const myReviews = useMemo(() => myCompleted.flatMap(r => r.reviews || []).filter(r => r.reviewee_id === profile?.id), [myCompleted, profile])
   const avgRating = useMemo(() => myReviews.length > 0
@@ -146,7 +151,7 @@ export default function ProDashboard() {
     // Vérifier que le pro a configuré ses infos bancaires
     if (!profile?.bank_name) {
       toast('💳 Ajoutez vos informations bancaires avant de soumettre une offre', 'info')
-      setTab(1) // Aller à l'onglet Profil
+      setTab(4) // Aller à l'onglet Profil
       return
     }
     const price = parseFloat(offerPrice[requestId])
