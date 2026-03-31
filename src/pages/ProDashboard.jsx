@@ -528,7 +528,7 @@ export default function ProDashboard() {
               </div>
               )
             })
-          ) : null}
+          )}
         </div>
       )}
 
