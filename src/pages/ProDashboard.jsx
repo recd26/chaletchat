@@ -911,11 +911,22 @@ export default function ProDashboard() {
                       const hasOpen = openItems.length > 0
                       const isPast = new Date(dateStr) < new Date(todayStr)
                       const hasAny = hasMission || hasOpen
+                      const allItems = [...missions, ...openItems]
+
+                      // Construire le tooltip
+                      const tooltipLines = []
+                      if (hasMission) tooltipLines.push(`✅ ${missions.length} confirmée${missions.length > 1 ? 's' : ''}`)
+                      if (hasOpen) tooltipLines.push(`📍 ${openItems.length} demande${openItems.length > 1 ? 's' : ''} ouverte${openItems.length > 1 ? 's' : ''}`)
+                      allItems.forEach(r => {
+                        const isMission = missions.includes(r)
+                        tooltipLines.push(`${isMission ? '  ✅' : '  📍'} ${r.chalet?.name || 'Chalet'} — ${r.scheduled_time || '?'} — ${isMission ? r.agreed_price : r.suggested_budget || '?'}$`)
+                      })
 
                       return (
                         <div key={dateStr}
                           onClick={() => hasAny && handleCalDayClick(dateStr)}
-                          className={`h-16 flex flex-col items-center justify-center rounded-xl mx-0.5 my-0.5 transition-all relative ${
+                          title={hasAny ? tooltipLines.join('\n') : ''}
+                          className={`h-16 flex flex-col items-center justify-center rounded-xl mx-0.5 my-0.5 transition-all relative group ${
                             isToday ? 'bg-teal text-white font-800'
                             : hasMission && hasOpen ? 'bg-amber-50 border border-amber-300 text-amber-700 font-800 cursor-pointer hover:bg-amber-100'
                             : hasMission ? 'bg-teal/10 text-teal font-800 cursor-pointer hover:bg-teal/20'
@@ -936,6 +947,37 @@ export default function ProDashboard() {
                           )}
                           {hasMission && hasOpen && (
                             <span className="absolute -top-0.5 -right-0.5 text-[8px]">⚠️</span>
+                          )}
+
+                          {/* Tooltip au survol */}
+                          {hasAny && (
+                            <div className="hidden group-hover:block absolute z-50 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white rounded-xl shadow-lg px-3 py-2.5 min-w-[200px] max-w-[260px] pointer-events-none">
+                              <p className="text-[10px] font-700 text-gray-400 uppercase mb-1.5">
+                                {new Date(dateStr).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' })}
+                              </p>
+                              {missions.map(r => (
+                                <div key={r.id} className="flex items-center gap-2 py-1 border-b border-gray-700 last:border-0">
+                                  <span className="text-xs">✅</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-700 truncate">{r.chalet?.name}</p>
+                                    <p className="text-[10px] text-gray-400">{r.scheduled_time} • {r.agreed_price}$</p>
+                                  </div>
+                                </div>
+                              ))}
+                              {openItems.map(r => (
+                                <div key={r.id} className="flex items-center gap-2 py-1 border-b border-gray-700 last:border-0">
+                                  <span className="text-xs">📍</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-700 truncate text-coral-light">{r.chalet?.name}</p>
+                                    <p className="text-[10px] text-gray-400">{r.scheduled_time} • {r.suggested_budget || '?'}$</p>
+                                  </div>
+                                </div>
+                              ))}
+                              {hasMission && hasOpen && (
+                                <p className="text-[9px] text-amber-400 font-600 mt-1">⚠️ Conflit potentiel</p>
+                              )}
+                              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-900" />
+                            </div>
                           )}
                         </div>
                       )
