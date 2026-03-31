@@ -10,8 +10,7 @@ import ChatPanel from '../components/ChatPanel'
 import StripeCardForm from '../components/StripeCardForm'
 import { supabase } from '../lib/supabase'
 
-const TABS = ['🏡 Tableau de bord', '🏔 Mes chalets', '📋 Demandes', '✅ Historique', '💳 Paiement', '💬 Messages']
-const TAB_MESSAGES = 5
+const TABS = ['🏡 Tableau de bord', '🏔 Mes chalets', '📋 Demandes', '✅ Historique', '💳 Paiement']
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -27,22 +26,8 @@ export default function Dashboard() {
   useEffect(() => {
     const paramTab = searchParams.get('tab')
     const paramReq = searchParams.get('request')
-    const paramChat = searchParams.get('chat')
-    if (paramTab === null && !paramReq && !paramChat) return
-
-    if (paramTab === 'messages') {
-      setTab(TAB_MESSAGES)
-    } else if (paramTab !== null) {
-      setTab(parseInt(paramTab, 10))
-    }
-
-    // Ouvrir une conversation depuis une notification
-    if (paramChat) {
-      setTab(TAB_MESSAGES)
-      const req = requests.find(r => r.id === paramChat)
-      setChatRequest({ id: paramChat, chaletName: req?.chalet?.name || 'Conversation' })
-    }
-
+    if (paramTab === null && !paramReq) return
+    if (paramTab !== null) setTab(parseInt(paramTab, 10))
     if (paramReq) {
       setHighlightRequest(paramReq)
       setOpenRequest(paramReq)
@@ -52,7 +37,7 @@ export default function Dashboard() {
       setTimeout(() => setHighlightRequest(null), 5000)
     }
     setSearchParams({}, { replace: true })
-  }, [searchParams, requests])
+  }, [searchParams])
   const [showCode, setShowCode] = useState({})
   const [chatRequest, setChatRequest] = useState(null)
   const [savedCard, setSavedCard] = useState(
@@ -1224,69 +1209,6 @@ export default function Dashboard() {
               ℹ️ <strong>Frais de service : 3%</strong> par transaction. Exemple : offre de 95$ → vous payez 98,60$ (95 + 2,85$ frais + 0,75$ traitement).
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ═══════ TAB 5 : Messages ═══════ */}
-      {tab === TAB_MESSAGES && (
-        <div>
-          <h2 className="text-lg font-800 text-gray-900 mb-4">💬 Conversations</h2>
-          {(() => {
-            const reqsWithChat = requests.filter(r =>
-              ['confirmed', 'in_progress', 'completed'].includes(r.status) && r.assigned_pro_id
-            ).sort((a, b) => new Date(b.updated_at || b.scheduled_date) - new Date(a.updated_at || a.scheduled_date))
-            if (reqsWithChat.length === 0) return (
-              <div className="card text-center py-12">
-                <MessageSquare size={32} className="text-gray-200 mx-auto mb-3" />
-                <p className="font-700 text-gray-500">Aucune conversation</p>
-                <p className="text-sm text-gray-400 mt-1">Les conversations apparaîtront ici quand une offre est acceptée.</p>
-              </div>
-            )
-            return (
-              <div className="space-y-3">
-                {reqsWithChat.map(req => {
-                  const pro = req.offers?.find(o => o.pro_id === req.assigned_pro_id)?.pro
-                  const statusLabel = req.status === 'completed' ? '✅ Terminé'
-                    : req.status === 'in_progress' ? '🧹 En cours'
-                    : '🟡 Confirmé'
-                  return (
-                    <div key={req.id}
-                      onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name || 'Chalet' })}
-                      className="card cursor-pointer hover:border-teal hover:shadow-md transition-all">
-                      <div className="flex items-center gap-4">
-                        {pro?.avatar_url ? (
-                          <img src={pro.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0 border-2 border-teal/20" />
-                        ) : (
-                          <div className="w-11 h-11 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0">
-                            <MessageSquare size={18} className="text-teal" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-700 text-gray-900 text-sm truncate">
-                              {pro?.first_name || 'Pro'} {pro?.last_name || ''}
-                            </p>
-                            <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full flex-shrink-0 ${
-                              req.status === 'completed' ? 'bg-gray-100 text-gray-500'
-                              : 'bg-teal/10 text-teal'
-                            }`}>{statusLabel}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
-                            🏔 {req.chalet?.name || 'Chalet'} — {req.agreed_price} $
-                          </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            📅 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' }) : ''}
-                            {req.chalet?.city ? ` • 📍 ${req.chalet.city}` : ''}
-                          </p>
-                        </div>
-                        <MessageSquare size={18} className="text-teal flex-shrink-0" />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
         </div>
       )}
 

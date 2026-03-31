@@ -12,8 +12,7 @@ import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
 
-const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées', '💬 Messages']
-const TAB_MESSAGES = 3
+const TABS = ['Demandes à proximité', 'Mon profil & vérification', '✅ Missions complétées']
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
@@ -29,22 +28,8 @@ export default function ProDashboard() {
   useEffect(() => {
     const paramTab = searchParams.get('tab')
     const paramReq = searchParams.get('request')
-    const paramChat = searchParams.get('chat')
-    if (paramTab === null && !paramReq && !paramChat) return
-
-    if (paramTab === 'messages') {
-      setTab(TAB_MESSAGES)
-    } else if (paramTab !== null) {
-      setTab(parseInt(paramTab, 10))
-    }
-
-    // Ouvrir une conversation depuis une notification
-    if (paramChat) {
-      setTab(TAB_MESSAGES)
-      const req = requests.find(r => r.id === paramChat)
-      setChatRequest({ id: paramChat, chaletName: req?.chalet?.name || 'Conversation' })
-    }
-
+    if (paramTab === null && !paramReq) return
+    if (paramTab !== null) setTab(parseInt(paramTab, 10))
     if (paramReq) {
       setExpiredRequest(null) // reset
       setHighlightRequest(paramReq)
@@ -59,7 +44,7 @@ export default function ProDashboard() {
       setTimeout(() => setHighlightRequest(null), 5000)
     }
     setSearchParams({}, { replace: true })
-  }, [searchParams, requests])
+  }, [searchParams])
 
   // Vérifier aussi quand les requests finissent de charger
   useEffect(() => {
@@ -1410,66 +1395,6 @@ export default function ProDashboard() {
               )
             })
           )}
-        </div>
-      )}
-
-      {/* ═══════ TAB 3 : Messages ═══════ */}
-      {tab === TAB_MESSAGES && (
-        <div>
-          <h2 className="text-lg font-800 text-gray-900 mb-4">💬 Conversations</h2>
-          {(() => {
-            const myMissions = requests.filter(r =>
-              r.assigned_pro_id === profile?.id &&
-              ['confirmed', 'in_progress', 'completed'].includes(r.status)
-            ).sort((a, b) => new Date(b.updated_at || b.scheduled_date) - new Date(a.updated_at || a.scheduled_date))
-            if (myMissions.length === 0) return (
-              <div className="card text-center py-12">
-                <MessageSquare size={32} className="text-gray-200 mx-auto mb-3" />
-                <p className="font-700 text-gray-500">Aucune conversation</p>
-                <p className="text-sm text-gray-400 mt-1">Les conversations apparaîtront ici quand une offre est acceptée.</p>
-              </div>
-            )
-            return (
-              <div className="space-y-3">
-                {myMissions.map(req => {
-                  const statusLabel = req.status === 'completed' ? '✅ Terminé'
-                    : req.status === 'in_progress' ? '🧹 En cours'
-                    : '🟡 Confirmé'
-                  const ms = getMissionStatus(req)
-                  return (
-                    <div key={req.id}
-                      onClick={() => setChatRequest({ id: req.id, chaletName: req.chalet?.name || 'Chalet' })}
-                      className="card cursor-pointer hover:border-teal hover:shadow-md transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="w-11 h-11 rounded-full bg-teal/10 flex items-center justify-center flex-shrink-0 text-lg">
-                          🏔
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-700 text-gray-900 text-sm truncate">
-                              {req.chalet?.name || 'Chalet'}
-                            </p>
-                            <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full flex-shrink-0 ${
-                              req.status === 'completed' ? 'bg-gray-100 text-gray-500'
-                              : 'bg-teal/10 text-teal'
-                            }`}>{statusLabel}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
-                            💰 {req.agreed_price} $ — {req.chalet?.city || ''}
-                          </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            📅 {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' }) : ''}
-                            {ms ? ` • ${ms.icon} ${ms.label}` : ''}
-                          </p>
-                        </div>
-                        <MessageSquare size={18} className="text-teal flex-shrink-0" />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
         </div>
       )}
 

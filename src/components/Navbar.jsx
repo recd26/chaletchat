@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { LogOut, Home } from 'lucide-react'
+import { LogOut, Home, MessageSquare } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
 export default function Navbar() {
@@ -35,8 +35,9 @@ export default function Navbar() {
                 Mes demandes
               </Link>
             )}
-            <Link to="/paiement" className="text-sm font-600 text-gray-600 hover:text-gray-900 transition-colors">
-              Paiement
+            <Link to="/messages" className="text-sm font-600 text-gray-600 hover:text-teal transition-colors flex items-center gap-1.5">
+              <MessageSquare size={14} />
+              <span className="hidden sm:inline">Messages</span>
             </Link>
 
             <NotificationBell />

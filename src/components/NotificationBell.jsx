@@ -79,10 +79,9 @@ export default function NotificationBell() {
     const nav = NAV_MAP[notif.type]
     if (!nav) return setOpen(false)
 
-    // Message → ouvrir le chat dans le bon dashboard
+    // Message → ouvrir la page Messages dédiée
     if (nav.chat && notif.request_id) {
-      const path = profile?.role === 'pro' ? '/pro' : '/dashboard'
-      navigate(`${path}?tab=messages&chat=${notif.request_id}`)
+      navigate(`/messages?chat=${notif.request_id}`)
       setOpen(false)
       return
     }

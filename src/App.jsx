@@ -16,6 +16,7 @@ import NewChalet    from './pages/NewChalet'
 import EditChalet   from './pages/EditChalet'
 import NewRequest       from './pages/NewRequest'
 import PendingApproval  from './pages/PendingApproval'
+import Messages         from './pages/Messages'
 
 // Redirige après connexion selon le rôle
 function RoleRedirect() {
@@ -68,6 +69,13 @@ function AppRoutes() {
         <Route path="/chalet/:id/editer" element={
           <ProtectedRoute requiredRole="proprio">
             <EditChalet />
+          </ProtectedRoute>
+        } />
+
+        {/* Messages — accessible aux deux rôles */}
+        <Route path="/messages" element={
+          <ProtectedRoute>
+            <Messages />
           </ProtectedRoute>
         } />
 
