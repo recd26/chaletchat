@@ -536,6 +536,17 @@ ALTER TABLE public.notifications
     'mission_en_route','mission_sur_place','mission_en_cours'
   ));
 
+-- ─── POLITIQUE RLS : l'admin peut modifier tous les profils ──
+-- OPTION 1 (plus simple) : politique RLS basée sur l'email admin
+create policy "Admin can update all profiles" on public.profiles
+  for update using (
+    exists (
+      select 1 from auth.users
+      where auth.users.id = auth.uid()
+        and auth.users.email = 'ouellet.david@outlook.com'
+    )
+  );
+
 -- ─── FONCTION ADMIN : approuver / refuser un compte ─────────
 -- SECURITY DEFINER = s'exécute avec les droits du créateur (bypass RLS)
 create or replace function admin_update_verif_status(
