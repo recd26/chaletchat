@@ -252,9 +252,15 @@ export default function ProDashboard() {
                 proLng={profile?.lng}
                 radius={profile?.radius_km || 25}
                 onRequestClick={(reqId) => {
+                  setExpandedReq(reqId)
                   setTimeout(() => {
-                    document.getElementById(`request-${reqId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                  }, 100)
+                    const el = document.getElementById(`request-${reqId}`)
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      el.classList.add('ring-2', 'ring-teal', 'ring-offset-2')
+                      setTimeout(() => el.classList.remove('ring-2', 'ring-teal', 'ring-offset-2'), 3000)
+                    }
+                  }, 200)
                 }}
               />
             </Suspense>

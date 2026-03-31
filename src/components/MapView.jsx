@@ -245,7 +245,8 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
                     const offersCount = req.offers?.length || 0
                     return (
                       <div key={req.id}
-                        onClick={() => onRequestClick && onRequestClick(req.id)}
+                        onClick={(e) => { e.stopPropagation(); onRequestClick && onRequestClick(req.id) }}
+                        onMouseDown={(e) => e.stopPropagation()}
                         style={{
                           padding: '8px',
                           marginBottom: idx < group.length - 1 ? '6px' : '0',
@@ -258,9 +259,12 @@ export default function MapView({ requests = [], proLat = null, proLng = null, r
                           <span style={{ fontSize: '12px', fontWeight: '700', color: '#111' }}>
                             {urgent && '🔴 '}🗓 {dateStr}
                           </span>
-                          <span style={{ fontSize: '12px', fontWeight: '800', color: '#0D9488' }}>
-                            {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0D9488' }}>
+                              {req.suggested_budget ? `${req.suggested_budget} $` : '—'}
+                            </span>
+                            <span style={{ fontSize: '10px', color: '#0D9488', fontWeight: '600' }}>Voir →</span>
+                          </div>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '10px', background: '#F3F4F6', color: '#666', padding: '1px 5px', borderRadius: '4px' }}>
