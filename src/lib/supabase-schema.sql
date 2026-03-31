@@ -536,4 +536,39 @@ ALTER TABLE public.notifications
     'mission_en_route','mission_sur_place','mission_en_cours'
   ));
 
+-- ─── FONCTION ADMIN : approuver / refuser un compte ─────────
+-- SECURITY DEFINER = s'exécute avec les droits du créateur (bypass RLS)
+create or replace function admin_update_verif_status(
+  target_user_id uuid,
+  new_status text
+)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  caller_email text;
+begin
+  -- Récupérer l'email de l'appelant
+  select email into caller_email
+  from auth.users
+  where id = auth.uid();
+
+  -- Vérifier que l'appelant est admin
+  if caller_email is null or caller_email not in ('ouellet.david@outlook.com') then
+    raise exception 'Accès refusé : vous n''êtes pas administrateur';
+  end if;
+
+  -- Vérifier que le statut est valide
+  if new_status not in ('pending', 'submitted', 'approved', 'rejected') then
+    raise exception 'Statut invalide : %', new_status;
+  end if;
+
+  -- Mettre à jour le profil cible
+  update public.profiles
+  set verif_status = new_status, updated_at = now()
+  where id = target_user_id;
+end;
+$$;
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────

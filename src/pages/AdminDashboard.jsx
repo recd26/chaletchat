@@ -42,10 +42,10 @@ export default function AdminDashboard() {
 
   async function updateVerifStatus(proId, status) {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ verif_status: status })
-        .eq('id', proId)
+      const { error } = await supabase.rpc('admin_update_verif_status', {
+        target_user_id: proId,
+        new_status: status,
+      })
       if (error) throw error
       setPros(prev => prev.map(p => p.id === proId ? { ...p, verif_status: status } : p))
       toast(`✅ Statut mis à jour : ${status}`, 'success')
