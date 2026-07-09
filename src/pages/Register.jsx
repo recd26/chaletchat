@@ -9,6 +9,7 @@ import UploadBox from '../components/UploadBox'
 import Toast from '../components/Toast'
 import { PROVINCES, isValidPostalCode } from '../lib/constants'
 import { geocodeAddress } from '../lib/geocode'
+import { uploadIdDoc } from '../lib/idDocs'
 
 // ── Étapes selon le rôle ────────────────────────────────────
 const STEPS_PROPRIO = ['Compte', 'Profil']
@@ -79,11 +80,18 @@ export default function Register() {
       return true
     }
     if (step === 3 && role === 'pro') {
-      // Upload optionnel pour l'instant — on peut compléter plus tard
+      if (!selfieFile) return toast('⚠️ Selfie requis pour finaliser votre inscription', 'error')
+      if (!idFile)     return toast('⚠️ Pièce d\'identité requise pour finaliser votre inscription', 'error')
       return true
     }
     return true
   }
+
+  // Le bouton "Créer mon compte" reste désactivé tant que les 2 documents pro
+  // ne sont pas prévisualisés (critère P0-5) — empêche d'atteindre handleSubmit.
+  const isSubmitStep    = step === totalSteps
+  const missingProDocs  = role === 'pro' && isSubmitStep && (!selfieFile || !idFile)
+  const submitDisabled  = busy || missingProDocs
 
   function next() {
     if (!validateStep()) return
@@ -105,30 +113,9 @@ export default function Register() {
         if (coords) { proLat = coords.lat; proLng = coords.lng }
       }
 
-      // Upload selfie + ID si fournis (pro step 3)
-      let selfieUrl = null, idCardUrl = null
-      if (role === 'pro') {
-        if (selfieFile) {
-          const ext = selfieFile.name.split('.').pop()
-          const path = `temp/${Date.now()}-selfie.${ext}`
-          const { error: upErr } = await supabase.storage.from('id-documents').upload(path, selfieFile, { upsert: true })
-          if (!upErr) {
-            const { data: { publicUrl } } = supabase.storage.from('id-documents').getPublicUrl(path)
-            selfieUrl = publicUrl
-          }
-        }
-        if (idFile) {
-          const ext = idFile.name.split('.').pop()
-          const path = `temp/${Date.now()}-id.${ext}`
-          const { error: upErr } = await supabase.storage.from('id-documents').upload(path, idFile, { upsert: true })
-          if (!upErr) {
-            const { data: { publicUrl } } = supabase.storage.from('id-documents').getPublicUrl(path)
-            idCardUrl = publicUrl
-          }
-        }
-      }
-
-      await signUp({
+      // 1) Créer le compte d'abord — il faut être authentifié pour
+      //    uploader dans id-documents (RLS : premier segment du path = auth.uid).
+      const signUpResult = await signUp({
         email,
         password: pw,
         role,
@@ -149,8 +136,6 @@ export default function Register() {
           experience,
           languages,
           bio,
-          ...(selfieUrl && { selfie_url: selfieUrl }),
-          ...(idCardUrl && { id_card_url: idCardUrl }),
         }),
         // Profil proprio
         ...(role === 'proprio' && {
@@ -159,6 +144,34 @@ export default function Register() {
           location_type: locationType,
         }),
       })
+
+      // 2) Upload selfie + ID sous {userId}/... puis persister le chemin de stockage
+      //    (pas d'URL publique — l'admin régénère une URL signée à l'affichage).
+      const newUserId = signUpResult?.user?.id
+      if (role === 'pro' && newUserId) {
+        const docUpdates = {}
+        if (selfieFile) {
+          try {
+            docUpdates.selfie_url = await uploadIdDoc({
+              userId: newUserId, type: 'selfie', file: selfieFile,
+            })
+          } catch (err) {
+            toast(`⚠️ Selfie non téléversé : ${err.message}`, 'error')
+          }
+        }
+        if (idFile) {
+          try {
+            docUpdates.id_card_url = await uploadIdDoc({
+              userId: newUserId, type: 'id_card', file: idFile,
+            })
+          } catch (err) {
+            toast(`⚠️ Pièce d'identité non téléversée : ${err.message}`, 'error')
+          }
+        }
+        if (Object.keys(docUpdates).length > 0) {
+          await supabase.from('profiles').update(docUpdates).eq('id', newUserId)
+        }
+      }
       toast('🎉 Compte créé ! En attente d\'approbation par l\'administrateur.', 'success')
       setTimeout(() => navigate('/en-attente'), 1200)
     } catch (err) {
@@ -335,10 +348,15 @@ export default function Register() {
             <h2 className="text-xl font-800 text-gray-900 mb-1">Vérification d'identité 🪪</h2>
             <p className="text-sm text-gray-400 mb-5">Documents chiffrés, jamais partagés avec les propriétaires. Vérification sous 24h.</p>
 
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <UploadBox icon="🤳" title="Selfie" subtitle="Visage visible, bonne lumière" onFile={setSelfieFile} teal />
-              <UploadBox icon="🪪" title="Pièce d'identité" subtitle="Passeport, permis ou carte" onFile={setIdFile} teal />
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              <UploadBox icon="🤳" title="Selfie" subtitle="Visage visible, bonne lumière"
+                onFile={setSelfieFile} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
+              <UploadBox icon="🪪" title="Pièce d'identité" subtitle="Passeport, permis ou carte"
+                onFile={setIdFile} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
             </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Formats acceptés : JPG, PNG, WEBP, PDF · Max 10 Mo
+            </p>
 
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
               <p className="text-xs font-700 text-gray-800 mb-2">📋 Critères acceptés</p>
@@ -364,10 +382,11 @@ export default function Register() {
           <button
             type="button"
             onClick={next}
-            disabled={busy}
+            disabled={submitDisabled}
+            title={missingProDocs ? 'Téléversez votre selfie et votre pièce d\'identité pour continuer' : undefined}
             className={`flex-1 py-3 rounded-xl font-700 text-sm text-white transition-all ${
               isTeal ? 'bg-teal hover:opacity-90' : 'bg-coral hover:bg-coral-dark'
-            } disabled:opacity-60`}
+            } disabled:opacity-60 disabled:cursor-not-allowed`}
           >
             {busy ? 'Création...' : step === totalSteps ? '✅ Créer mon compte' : 'Continuer →'}
           </button>
