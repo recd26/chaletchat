@@ -40,38 +40,19 @@ export default function AdminDashboard() {
     }
   }
 
-  async function updateVerifStatus(proId, status) {
+  async function updateVerifStatus(proId, status, reason = null) {
     try {
-      // Tenter via la fonction RPC sécurisée (SECURITY DEFINER)
-      const { error: rpcError } = await supabase.rpc('admin_update_verif_status', {
+      const { error } = await supabase.rpc('admin_update_verif_status', {
         target_user_id: proId,
         new_status: status,
+        reason,
       })
+      if (error) throw error
 
-      if (rpcError) {
-        // Fallback si la fonction RPC n'est pas encore créée :
-        // utilise l'update direct (nécessite la policy "Admin can update all profiles")
-        const { error } = await supabase
-          .from('profiles')
-          .update({ verif_status: status })
-          .eq('id', proId)
-        if (error) throw error
-      }
-
-      // Vérifier que la mise à jour a bien été persistée
-      const { data: check } = await supabase
-        .from('profiles')
-        .select('verif_status')
-        .eq('id', proId)
-        .single()
-
-      if (check?.verif_status !== status) {
-        throw new Error(
-          'Mise à jour bloquée par Supabase (RLS). Exécutez le SQL d\'admin dans Supabase Dashboard → SQL Editor.'
-        )
-      }
-
-      setPros(prev => prev.map(p => p.id === proId ? { ...p, verif_status: status } : p))
+      setPros(prev => prev.map(p => p.id === proId
+        ? { ...p, verif_status: status, verif_rejection_reason: status === 'rejected' ? reason : null }
+        : p
+      ))
       toast(`✅ Statut mis à jour : ${status}`, 'success')
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')

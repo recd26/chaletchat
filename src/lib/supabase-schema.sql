@@ -537,45 +537,77 @@ ALTER TABLE public.notifications
     'mission_en_route','mission_sur_place','mission_en_cours'
   ));
 
+-- ─── TABLE admins (P0-6) ─────────────────────────────────────
+-- Whitelist par email — source de vérité unique pour les droits admin.
+-- Ajouter/retirer un admin = insert/delete dans cette table.
+create table if not exists public.admins (
+  email       text primary key,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.admins enable row level security;
+
+insert into public.admins (email) values ('ouellet.david@outlook.com')
+  on conflict (email) do nothing;
+
 -- ─── POLITIQUE RLS : l'admin peut modifier tous les profils ──
--- Utilise auth.jwt() pour lire l'email sans accéder à auth.users
+-- S'appuie sur la table admins (P0-6).
+drop policy if exists "Admin can update all profiles" on public.profiles;
 create policy "Admin can update all profiles" on public.profiles
   for update using (
-    auth.jwt()->>'email' = 'ouellet.david@outlook.com'
+    auth.email() in (select email from public.admins)
   );
 
--- ─── FONCTION ADMIN : approuver / refuser un compte ─────────
--- SECURITY DEFINER = s'exécute avec les droits du créateur (bypass RLS)
-create or replace function admin_update_verif_status(
+-- ─── FONCTION ADMIN : approuver / refuser un compte (P0-6) ──
+-- SECURITY DEFINER = s'exécute avec les droits du créateur (bypass RLS).
+-- Signature : (target_user_id, new_status, reason?) — reason alimente
+-- verif_rejection_reason (P0-4) quand new_status = 'rejected'.
+drop function if exists public.admin_update_verif_status(uuid, text);
+drop function if exists public.admin_update_verif_status(uuid, text, text);
+create or replace function public.admin_update_verif_status(
   target_user_id uuid,
-  new_status text
+  new_status     text,
+  reason         text default null
 )
 returns void
 language plpgsql
 security definer
+set search_path = public, auth
 as $$
 declare
   caller_email text;
+  rows_updated int;
 begin
-  -- Récupérer l'email depuis le JWT (pas besoin d'accéder à auth.users)
-  caller_email := auth.jwt()->>'email';
+  caller_email := auth.email();
 
-  -- Vérifier que l'appelant est admin
-  if caller_email is null or caller_email != 'ouellet.david@outlook.com' then
-    raise exception 'Accès refusé : vous n''êtes pas administrateur';
+  if caller_email is null
+     or not exists (select 1 from public.admins where email = caller_email) then
+    raise exception 'permission_denied: caller is not an admin'
+      using errcode = '42501';
   end if;
 
-  -- Vérifier que le statut est valide
   if new_status not in ('pending', 'submitted', 'approved', 'rejected') then
-    raise exception 'Statut invalide : %', new_status;
+    raise exception 'invalid_status: %', new_status
+      using errcode = '22023';
   end if;
 
-  -- Mettre à jour le profil cible
   update public.profiles
-  set verif_status = new_status, updated_at = now()
+  set
+    verif_status           = new_status,
+    verif_rejection_reason = case when new_status = 'rejected' then reason else null end,
+    updated_at             = now()
   where id = target_user_id;
+
+  get diagnostics rows_updated = row_count;
+  if rows_updated = 0 then
+    raise exception 'profile_not_found: %', target_user_id
+      using errcode = 'P0002';
+  end if;
 end;
 $$;
+
+revoke all on function public.admin_update_verif_status(uuid, text, text) from public;
+grant execute on function public.admin_update_verif_status(uuid, text, text) to authenticated;
 
 -- ============================================================
 -- P0-3 · Email automatique à l'approbation / au refus d'un compte
