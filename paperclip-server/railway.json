@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "paperclip-server/Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "/start.sh",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 300
+  }
+}
