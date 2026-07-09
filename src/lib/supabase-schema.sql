@@ -694,4 +694,77 @@ create trigger trg_notify_verif_status_changed
 alter table public.profiles
   add column if not exists calendar_tour_completed_at timestamptz;
 
+-- ============================================================
+-- P0-2 · Nettoyage cron des uploads orphelins (cleanup-orphan-uploads)
+-- ============================================================
+-- Depuis P0-2, les documents d'identité sont uploadés après signUp sous
+-- `{userId}/…`. Il ne devrait donc plus jamais y avoir de fichier dans
+-- `id-documents/temp/`, et un dossier `{uid}/…` sans profil correspondant
+-- vient d'un signUp échoué en cours de route (auth OK, upsert profil KO).
+--
+-- Ce cron quotidien appelle l'edge function `cleanup-orphan-uploads` avec
+-- la service_role_key (jamais un client anonyme) — la fonction supprime :
+--   • `temp/*` plus vieux que 24 h ;
+--   • `{uid}/*` si `uid` n'existe pas dans `public.profiles`.
+--
+-- Pré-requis (déjà présents pour P0-3) :
+--   • extension `pg_net` activée
+--   • `alter database postgres set app.settings.supabase_url    = 'https://<PROJECT>.supabase.co';`
+--   • `alter database postgres set app.settings.service_role_key = '<SERVICE_ROLE_KEY>';`
+--
+-- Nouveau pré-requis :
+--   • extension `pg_cron` activée (schéma `cron`, extension supabase-native).
+-- ============================================================
+
+create extension if not exists pg_cron;
+
+create or replace function public.trigger_cleanup_orphan_uploads()
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  supabase_url text;
+  service_key  text;
+  edge_url     text;
+begin
+  supabase_url := current_setting('app.settings.supabase_url', true);
+  service_key  := current_setting('app.settings.service_role_key', true);
+
+  if supabase_url is null or service_key is null then
+    raise notice 'trigger_cleanup_orphan_uploads: app.settings.supabase_url / service_role_key non configuré, cron ignoré';
+    return;
+  end if;
+
+  edge_url := supabase_url || '/functions/v1/cleanup-orphan-uploads';
+
+  perform net.http_post(
+    url     := edge_url,
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer ' || service_key
+    ),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 30000
+  );
+end;
+$$;
+
+-- Planification quotidienne à 03:15 UTC (heure creuse, après les uploads de
+-- la journée) — idempotent : on déprogramme puis reprogramme.
+do $$
+begin
+  perform cron.unschedule('cleanup-orphan-uploads-daily');
+exception when others then
+  -- pas encore planifié, rien à faire
+  null;
+end
+$$;
+
+select cron.schedule(
+  'cleanup-orphan-uploads-daily',
+  '15 3 * * *',
+  $$select public.trigger_cleanup_orphan_uploads();$$
+);
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
