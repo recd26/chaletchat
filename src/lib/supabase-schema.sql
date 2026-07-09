@@ -169,24 +169,34 @@ create trigger trg_requests_updated_at
   before update on public.cleaning_requests
   for each row execute procedure update_updated_at();
 
--- ─── TRIGGER : créer profil après inscription ─────────────────
-create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+-- ─── TRIGGER : créer profil après inscription (P0-9) ──────────
+-- `security definer` + search_path pinné pour contourner RLS sans
+-- risque d'injection. `on conflict (id) do nothing` rend l'insert
+-- idempotent quand le client fait un upsert concurrent après signUp.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
 begin
-  insert into public.profiles (id, role, first_name, last_name)
+  insert into public.profiles (id, role, first_name, last_name, phone)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'role', 'proprio'),
+    new.raw_user_meta_data->>'role',
     coalesce(new.raw_user_meta_data->>'first_name', ''),
-    coalesce(new.raw_user_meta_data->>'last_name', '')
-  );
+    coalesce(new.raw_user_meta_data->>'last_name', ''),
+    new.raw_user_meta_data->>'phone'
+  )
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute procedure handle_new_user();
+  for each row execute function public.handle_new_user();
 
 -- ─── TRIGGER : libérer paiement quand checklist 100% ──────────
 create or replace function maybe_release_payment()
