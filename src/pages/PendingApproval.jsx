@@ -1,8 +1,6 @@
 import { useAuth } from '../hooks/useAuth'
 import { Navigate } from 'react-router-dom'
 
-const ADMIN_EMAILS = ['ouellet.david@outlook.com']
-
 export default function PendingApproval() {
   const { user, profile, loading, signOut } = useAuth()
 
@@ -18,7 +16,7 @@ export default function PendingApproval() {
   if (!user) return <Navigate to="/login" replace />
 
   // Si admin, rediriger vers admin
-  if (ADMIN_EMAILS.includes(user.email?.toLowerCase())) {
+  if (profile?.is_admin) {
     return <Navigate to="/admin" replace />
   }
 

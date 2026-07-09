@@ -1,8 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
-const ADMIN_EMAILS = ['ouellet.david@outlook.com']
-
 export default function ProtectedRoute({ children, requiredRole = null, adminOnly = false }) {
   const { user, profile, loading } = useAuth()
 
@@ -16,9 +14,9 @@ export default function ProtectedRoute({ children, requiredRole = null, adminOnl
 
   if (!user) return <Navigate to="/login" replace />
 
-  const isAdmin = ADMIN_EMAILS.includes(user.email?.toLowerCase())
+  const isAdmin = profile?.is_admin === true
 
-  // Protection admin — seuls les emails autorisés peuvent accéder
+  // Protection admin — seuls les profils marqués is_admin peuvent accéder
   if (adminOnly && !isAdmin) {
     return <Navigate to={profile?.role === 'proprio' ? '/dashboard' : '/pro'} replace />
   }

@@ -799,4 +799,130 @@ select cron.schedule(
   $$select public.trigger_cleanup_orphan_uploads();$$
 );
 
+-- ============================================================
+-- P0-7 · Source unique des admins (flag profiles.is_admin)
+-- ============================================================
+-- Remplace la whitelist par email (`public.admins`, P0-6) et le
+-- hard-code frontend par un flag booléen sur `profiles`.
+-- Ajouter un admin = 1 UPDATE SQL exécuté avec le
+-- service_role (SQL Editor) — la colonne est verrouillée côté
+-- client via un REVOKE UPDATE.
+-- ============================================================
+
+alter table public.profiles
+  add column if not exists is_admin boolean not null default false;
+
+-- Reprendre les admins existants (whitelist P0-6 le cas échéant) puis
+-- s'assurer que l'admin fondateur est bien marqué.
+do $$
+begin
+  if to_regclass('public.admins') is not null then
+    update public.profiles p
+       set is_admin = true
+      from auth.users u
+     where u.id = p.id
+       and lower(u.email) in (select lower(email) from public.admins);
+  end if;
+end
+$$;
+
+update public.profiles p
+   set is_admin = true
+  from auth.users u
+ where u.id = p.id
+   and lower(u.email) = 'ouellet.david@outlook.com';
+
+-- Verrouiller la colonne côté client : les rôles anon/authenticated ne
+-- peuvent pas modifier is_admin. Le service_role et les fonctions
+-- SECURITY DEFINER (owner postgres) restent capables d'écrire dessus.
+revoke update (is_admin) on public.profiles from anon, authenticated;
+
+-- La politique RLS pour l'update global des profils s'appuie désormais
+-- sur is_admin (plus sur la table admins/auth.email()).
+drop policy if exists "Admin can update all profiles" on public.profiles;
+create policy "Admin can update all profiles" on public.profiles
+  for update using (
+    exists (
+      select 1 from public.profiles ap
+      where ap.id = auth.uid() and ap.is_admin = true
+    )
+  );
+
+-- admin_update_verif_status : contrôle d'accès basé sur is_admin.
+create or replace function public.admin_update_verif_status(
+  target_user_id uuid,
+  new_status     text,
+  reason         text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  is_caller_admin boolean;
+  rows_updated int;
+begin
+  select coalesce(is_admin, false) into is_caller_admin
+    from public.profiles
+   where id = auth.uid();
+
+  if not coalesce(is_caller_admin, false) then
+    raise exception 'permission_denied: caller is not an admin'
+      using errcode = '42501';
+  end if;
+
+  if new_status not in ('pending', 'submitted', 'approved', 'rejected') then
+    raise exception 'invalid_status: %', new_status
+      using errcode = '22023';
+  end if;
+
+  update public.profiles
+     set verif_status           = new_status,
+         verif_rejection_reason = case when new_status = 'rejected' then reason else null end,
+         updated_at             = now()
+   where id = target_user_id;
+
+  get diagnostics rows_updated = row_count;
+  if rows_updated = 0 then
+    raise exception 'profile_not_found: %', target_user_id
+      using errcode = 'P0002';
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_update_verif_status(uuid, text, text) from public;
+grant execute on function public.admin_update_verif_status(uuid, text, text) to authenticated;
+
+-- La table `admins` (P0-6) est superseded ; on la supprime pour garder
+-- une source de vérité unique.
+drop table if exists public.admins;
+
+-- ============================================================
+-- P0-8 · OAuth Google — forcer le choix de rôle + upload docs pro
+-- ============================================================
+-- Avant P0-8, un signUp OAuth (Google/Apple) créait un profil avec
+-- role='proprio' par défaut (coalesce dans handle_new_user), sans
+-- passer par les étapes profil/identité obligatoires du Register.
+-- Le trigger handle_new_user a déjà été corrigé en P0-9 pour insérer
+-- role = new.raw_user_meta_data->>'role' sans coalesce ; il reste à
+-- rendre la colonne nullable et à autoriser NULL dans le check :
+--   1. role devient NULLABLE (le trigger laisse role à NULL quand
+--      raw_user_meta_data->>'role' est absent — cas d'un OAuth).
+--   2. Le check accepte NULL en plus de ('proprio','pro').
+--   3. Le front (src/pages/CompleteProfile.jsx + guards) route tout
+--      profil dont role IS NULL vers /complete-profile pour lui faire
+--      choisir un rôle et — si pro — uploader selfie+ID.
+-- Sans cette migration, un OAuth reste bloqué en 'proprio' silencieux
+-- (ou l'insert du trigger échoue silencieusement selon la version).
+alter table public.profiles
+  alter column role drop not null;
+
+alter table public.profiles
+  drop constraint if exists profiles_role_check;
+
+alter table public.profiles
+  add constraint profiles_role_check
+  check (role is null or role in ('proprio', 'pro'));
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
