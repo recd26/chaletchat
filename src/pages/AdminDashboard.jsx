@@ -5,18 +5,16 @@ import { useToast } from '../hooks/useToast'
 import Toast from '../components/Toast'
 import { Star, CheckCircle, XCircle, Eye } from 'lucide-react'
 
-const ADMIN_EMAILS = ['ouellet.david@outlook.com']
-
 export default function AdminDashboard() {
-  const { user, profile } = useAuth()
+  const { profile } = useAuth()
   const { toasts, toast } = useToast()
   const [pros, setPros] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending') // 'all' | 'pending' | 'approved' | 'rejected'
   const [viewDoc, setViewDoc] = useState(null) // url du document à afficher
 
-  // Double sécurité — vérifier l'email même si ProtectedRoute le fait
-  const isAdmin = ADMIN_EMAILS.includes(user?.email?.toLowerCase())
+  // Double sécurité — vérifier le flag même si ProtectedRoute le fait
+  const isAdmin = profile?.is_admin === true
 
   useEffect(() => {
     if (isAdmin) fetchPros()
@@ -31,7 +29,7 @@ export default function AdminDashboard() {
         .order('created_at', { ascending: false })
       if (error) throw error
       // Exclure les admins de la liste
-      const filtered = (data || []).filter(p => !ADMIN_EMAILS.includes(p.email?.toLowerCase()))
+      const filtered = (data || []).filter(p => !p.is_admin)
       setPros(filtered)
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
