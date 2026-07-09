@@ -30,7 +30,20 @@ export function useNotifications() {
 
     channelRef.current = channel
 
-    return () => supabase.removeChannel(channel)
+    // Safari / iPad : refetch au retour de focus
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchNotifications()
+    }
+    function handleFocus() { fetchNotifications() }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [user])
 
   async function fetchNotifications() {

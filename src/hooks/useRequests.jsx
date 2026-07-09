@@ -43,7 +43,21 @@ export function useRequests() {
 
     channelRef.current = channel
 
-    return () => supabase.removeChannel(channel)
+    // Safari / iPad : refresh au retour de focus car les WebSockets
+    // sont souvent mis en pause en arrière-plan
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchRequests()
+    }
+    function handleFocus() { fetchRequests() }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      supabase.removeChannel(channel)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [user, profile])
 
   async function fetchRequests() {
