@@ -43,6 +43,13 @@ export default function PendingApproval() {
           }
         </p>
 
+        {isRejected && profile?.verif_rejection_reason && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-left">
+            <p className="text-xs text-red-700 font-700 mb-1">Motif du refus :</p>
+            <p className="text-sm text-red-600">{profile.verif_rejection_reason}</p>
+          </div>
+        )}
+
         {!isRejected && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
             <p className="text-xs text-amber-700 font-600">
