@@ -20,11 +20,13 @@ if [ -z "$PAPERCLIP_AGENT_JWT_SECRET" ]; then
   export PAPERCLIP_AGENT_JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")
 fi
 
-# Cloner le repo ChaletProp comme workspace des agents
-if [ ! -d "/workspace/chaletchat" ] && [ -n "$GITHUB_TOKEN" ]; then
+# Cloner le repo ChaletProp comme workspace des agents (dans $HOME/workspace)
+WORKSPACE_DIR="${HOME}/workspace"
+mkdir -p "$WORKSPACE_DIR"
+
+if [ ! -d "$WORKSPACE_DIR/chaletchat" ] && [ -n "$GITHUB_TOKEN" ]; then
   echo "📦 Cloning ChaletProp repo as agent workspace..."
-  mkdir -p /workspace
-  cd /workspace
+  cd "$WORKSPACE_DIR"
   git clone https://x-access-token:${GITHUB_TOKEN}@github.com/recd26/chaletchat.git
   cd chaletchat
   git config --local user.email "paperclip-agents@chaletprop.com"
@@ -38,10 +40,13 @@ export PAPERCLIP_HOST="0.0.0.0"
 export PAPERCLIP_BIND="lan"
 
 echo "✅ Starting Paperclip on 0.0.0.0:$PORT..."
+echo "   User: $(whoami)"
+echo "   Home: $HOME"
+echo "   Workspace: $WORKSPACE_DIR/chaletchat"
 echo "==================================="
 
 # Onboarder si pas encore fait (idempotent)
-if [ ! -f "/root/.paperclip/instances/default/config.json" ]; then
+if [ ! -f "${HOME}/.paperclip/instances/default/config.json" ]; then
   echo "🔧 First run — running onboard..."
   npx paperclipai onboard --yes --bind lan
 fi
