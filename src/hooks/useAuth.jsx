@@ -59,15 +59,23 @@ export function AuthProvider({ children }) {
     })
     if (error) throw error
 
-    // Mettre à jour le profil avec les infos supplémentaires
-    if (data.user && Object.keys(rest).length > 0) {
-      await supabase.from('profiles').update({
+    // Persister les infos profil supplémentaires. On utilise upsert pour se
+    // prémunir contre une race avec le trigger handle_new_user() : si le
+    // trigger a déjà inséré la ligne on la met à jour, sinon on l'insère.
+    // On ne peut faire cet upsert que si Supabase a créé une session
+    // (email confirmation désactivé) — sinon RLS bloque avec auth.uid()=null.
+    if (data.user && data.session) {
+      const { error: upsertErr } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        role,
         first_name: firstName,
         last_name: lastName,
         phone,
-        role,
-        ...rest
-      }).eq('id', data.user.id)
+        ...rest,
+      }, { onConflict: 'id' })
+      // On ne throw pas : le compte auth est déjà créé. On remonte quand même
+      // pour que le caller (Register.jsx) puisse afficher un message clair.
+      if (upsertErr) throw upsertErr
     }
 
     return data

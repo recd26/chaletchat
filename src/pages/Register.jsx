@@ -15,6 +15,12 @@ import { uploadIdDoc } from '../lib/idDocs'
 const STEPS_PROPRIO = ['Compte', 'Profil']
 const STEPS_PRO     = ['Compte', 'Profil', 'Identité']
 
+// Convertit "Français et Anglais" -> ["Français","Anglais"] pour la colonne text[]
+function parseLanguages(value) {
+  if (!value) return []
+  return value.split(/\s+et\s+|,\s*/).map(s => s.trim()).filter(Boolean)
+}
+
 export default function Register() {
   const { signUp } = useAuth()
   const { toasts, toast } = useToast()
@@ -59,44 +65,59 @@ export default function Register() {
   const isTeal     = role === 'pro'
   const totalSteps = steps.length
 
-  function validateStep() {
+  // Erreurs par champ, affichées inline sous chaque input.
+  const [errors, setErrors] = useState({})
+
+  // Calcule TOUTES les erreurs de l'étape courante en une passe, pour permettre
+  // un affichage inline par champ + un récap au clic sur le bouton principal.
+  function collectStepErrors() {
+    const e = {}
     if (step === 1) {
-      if (!firstName || !lastName) return toast('⚠️ Prénom et nom requis', 'error')
-      if (!email.includes('@'))    return toast('⚠️ Courriel invalide', 'error')
-      if (pw.length < 8)           return toast('⚠️ Mot de passe trop court (min. 8 caractères)', 'error')
-      if (pw !== pw2)              return toast('⚠️ Les mots de passe ne correspondent pas', 'error')
-      if (!terms)                  return toast('⚠️ Acceptez les conditions d\'utilisation', 'error')
-      return true
+      if (!firstName)              e.firstName = 'Prénom requis'
+      if (!lastName)               e.lastName  = 'Nom requis'
+      if (!email.includes('@'))    e.email     = 'Courriel invalide'
+      if (pw.length < 8)           e.pw        = 'Min. 8 caractères'
+      if (pw && pw2 && pw !== pw2) e.pw2       = 'Les mots de passe ne correspondent pas'
+      else if (!pw2)               e.pw2       = 'Confirmez votre mot de passe'
+      if (!terms)                  e.terms     = 'Acceptez les conditions d\'utilisation'
     }
     if (step === 2 && role === 'proprio') {
-      if (!province) return toast('⚠️ Sélectionnez une province', 'error')
-      return true
+      if (!province) e.province = 'Sélectionnez une province'
     }
     if (step === 2 && role === 'pro') {
-      if (!proAddress)  return toast('⚠️ Adresse requise', 'error')
-      if (!proCity)     return toast('⚠️ Ville requise', 'error')
-      if (!proProvince) return toast('⚠️ Province requise', 'error')
-      if (!isValidPostalCode(proPostalCode)) return toast('⚠️ Code postal invalide (ex: J8E 1T4)', 'error')
-      return true
+      if (!proAddress)  e.proAddress  = 'Adresse requise'
+      if (!proCity)     e.proCity     = 'Ville requise'
+      if (!proProvince) e.proProvince = 'Province requise'
+      if (!isValidPostalCode(proPostalCode)) e.proPostalCode = 'Code postal invalide (ex: J8E 1T4)'
     }
     if (step === 3 && role === 'pro') {
-      if (!selfieFile) return toast('⚠️ Selfie requis pour finaliser votre inscription', 'error')
-      if (!idFile)     return toast('⚠️ Pièce d\'identité requise pour finaliser votre inscription', 'error')
-      return true
+      if (!selfieFile) e.selfieFile = 'Selfie requis'
+      if (!idFile)     e.idFile     = 'Pièce d\'identité requise'
     }
-    return true
+    return e
   }
 
-  // Le bouton "Créer mon compte" reste désactivé tant que les 2 documents pro
-  // ne sont pas prévisualisés (critère P0-5) — empêche d'atteindre handleSubmit.
-  const isSubmitStep    = step === totalSteps
-  const missingProDocs  = role === 'pro' && isSubmitStep && (!selfieFile || !idFile)
-  const submitDisabled  = busy || missingProDocs
+  // Le bouton reste actionnable même en erreur : au clic on affiche le récap
+  // des erreurs, plutôt que de rester grisé sans feedback (l'utilisateur ne
+  // savait pas pourquoi c'était grisé auparavant — cf. CHA-40).
+  const submitDisabled  = busy
 
   function next() {
-    if (!validateStep()) return
+    const stepErrors = collectStepErrors()
+    setErrors(stepErrors)
+    const list = Object.values(stepErrors)
+    if (list.length > 0) {
+      // Récap : une seule notification qui liste tout ce qui manque.
+      toast(`⚠️ ${list.length === 1 ? list[0] : `${list.length} champs à corriger`}`, 'error')
+      return
+    }
     if (step < totalSteps) return setStep(s => s + 1)
     handleSubmit()
+  }
+
+  // Efface l'erreur d'un champ dès qu'il est modifié (feedback immédiat).
+  function clearError(field) {
+    if (errors[field]) setErrors(prev => { const { [field]: _, ...rest } = prev; return rest })
   }
 
   async function handleSubmit() {
@@ -134,10 +155,14 @@ export default function Register() {
           lat: proLat,
           lng: proLng,
           experience,
-          languages,
+          // La colonne languages est de type text[] — un select renvoie un
+          // string libellé "Français et Anglais" qu'il faut décomposer sinon
+          // Postgres rejette l'UPDATE et le profil reste incomplet (bug CHA-40).
+          languages: parseLanguages(languages),
           bio,
         }),
-        // Profil proprio
+        // Profil proprio — chalet_count/location_type sont désormais
+        // persistés via une migration dédiée (voir supabase-schema.sql).
         ...(role === 'proprio' && {
           province,
           chalet_count: chaletCount,
@@ -145,35 +170,51 @@ export default function Register() {
         }),
       })
 
+      // Si Supabase exige la confirmation d'email (email_confirm activé),
+      // signUp() ne crée pas de session. Les uploads dans le bucket
+      // id-documents nécessitent auth.uid() (RLS), donc on ne peut pas les
+      // téléverser tant que l'utilisateur n'a pas confirmé son email.
+      const newUserId = signUpResult?.user?.id
+      const hasSession = !!signUpResult?.session
+      const needsEmailConfirm = !hasSession
+      let idUploadFailed = false
+
       // 2) Upload selfie + ID sous {userId}/... puis persister le chemin de stockage
       //    (pas d'URL publique — l'admin régénère une URL signée à l'affichage).
-      const newUserId = signUpResult?.user?.id
-      if (role === 'pro' && newUserId) {
+      if (role === 'pro' && newUserId && hasSession) {
         const docUpdates = {}
-        if (selfieFile) {
-          try {
+        try {
+          if (selfieFile) {
             docUpdates.selfie_url = await uploadIdDoc({
               userId: newUserId, type: 'selfie', file: selfieFile,
             })
-          } catch (err) {
-            toast(`⚠️ Selfie non téléversé : ${err.message}`, 'error')
           }
-        }
-        if (idFile) {
-          try {
+          if (idFile) {
             docUpdates.id_card_url = await uploadIdDoc({
               userId: newUserId, type: 'id_card', file: idFile,
             })
-          } catch (err) {
-            toast(`⚠️ Pièce d'identité non téléversée : ${err.message}`, 'error')
           }
-        }
-        if (Object.keys(docUpdates).length > 0) {
-          await supabase.from('profiles').update(docUpdates).eq('id', newUserId)
+          if (Object.keys(docUpdates).length > 0) {
+            const { error: docErr } = await supabase.from('profiles').update(docUpdates).eq('id', newUserId)
+            if (docErr) throw docErr
+          }
+        } catch (err) {
+          idUploadFailed = true
+          // Le compte existe, mais les docs n'ont pas été enregistrés — on
+          // laisse le pro les re-uploader depuis son ProDashboard plutôt
+          // que d'échouer complètement.
+          toast(`⚠️ Documents non enregistrés (${err.message}). Vous pourrez les téléverser depuis votre profil.`, 'error')
         }
       }
-      toast('🎉 Compte créé ! En attente d\'approbation par l\'administrateur.', 'success')
-      setTimeout(() => navigate('/en-attente'), 1200)
+
+      if (needsEmailConfirm) {
+        toast('📧 Compte créé ! Confirmez votre courriel puis reconnectez-vous pour finaliser votre profil.', 'success')
+      } else if (idUploadFailed) {
+        toast('⚠️ Compte créé, mais téléversez vos documents depuis votre profil pour être vérifié·e.', 'info')
+      } else {
+        toast('🎉 Compte créé ! En attente d\'approbation par l\'administrateur.', 'success')
+      }
+      setTimeout(() => navigate(needsEmailConfirm ? '/login' : '/en-attente'), 1500)
     } catch (err) {
       toast(`❌ ${err.message}`, 'error')
     } finally {
@@ -182,6 +223,7 @@ export default function Register() {
   }
 
   const inputClass = isTeal ? 'input-field-teal' : 'input-field'
+  const fieldClass = (name) => errors[name] ? `${inputClass} border-red-400 focus:border-red-500` : inputClass
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center py-12 px-4 bg-gray-50">
@@ -250,27 +292,48 @@ export default function Register() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Prénom</label>
-                <input className={inputClass} placeholder="Marie" value={firstName} onChange={e=>setFirstName(e.target.value)} /></div>
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Nom</label>
-                <input className={inputClass} placeholder="Lapointe" value={lastName} onChange={e=>setLastName(e.target.value)} /></div>
+              <div>
+                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Prénom</label>
+                <input className={fieldClass('firstName')} placeholder="Marie" value={firstName}
+                  onChange={e=>{ setFirstName(e.target.value); clearError('firstName') }} />
+                {errors.firstName && <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Nom</label>
+                <input className={fieldClass('lastName')} placeholder="Lapointe" value={lastName}
+                  onChange={e=>{ setLastName(e.target.value); clearError('lastName') }} />
+                {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>}
+              </div>
             </div>
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Courriel</label>
-              <input className={inputClass} type="email" placeholder="votre@courriel.com" value={email} onChange={e=>setEmail(e.target.value)} /></div>
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Téléphone</label>
-              <input className={inputClass} type="tel" placeholder="+1 (514) 000-0000" value={phone} onChange={e=>setPhone(e.target.value)} /></div>
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Mot de passe</label>
-              <PasswordInput teal={isTeal} value={pw} onChange={setPw} /></div>
-            <div className="mb-4"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Confirmer le mot de passe</label>
-              <PasswordInput teal={isTeal} value={pw2} onChange={setPw2} placeholder="Répétez le mot de passe" /></div>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Courriel</label>
+              <input className={fieldClass('email')} type="email" placeholder="votre@courriel.com" value={email}
+                onChange={e=>{ setEmail(e.target.value); clearError('email') }} />
+              {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Téléphone</label>
+              <input className={inputClass} type="tel" placeholder="+1 (514) 000-0000" value={phone} onChange={e=>setPhone(e.target.value)} />
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Mot de passe</label>
+              <PasswordInput teal={isTeal} value={pw} onChange={(v)=>{ setPw(v); clearError('pw') }} />
+              {errors.pw && <p className="text-xs text-red-500 mt-1">{errors.pw}</p>}
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Confirmer le mot de passe</label>
+              <PasswordInput teal={isTeal} value={pw2} onChange={(v)=>{ setPw2(v); clearError('pw2') }} placeholder="Répétez le mot de passe" />
+              {errors.pw2 && <p className="text-xs text-red-500 mt-1">{errors.pw2}</p>}
+            </div>
 
-            <label className="flex items-start gap-2.5 mb-5 cursor-pointer">
-              <input type="checkbox" checked={terms} onChange={e=>setTerms(e.target.checked)}
+            <label className="flex items-start gap-2.5 mb-2 cursor-pointer">
+              <input type="checkbox" checked={terms} onChange={e=>{ setTerms(e.target.checked); clearError('terms') }}
                 className="mt-0.5 w-4 h-4 accent-coral flex-shrink-0" />
               <span className="text-xs text-gray-400 leading-relaxed">
                 J'accepte les <Link to="/conditions" className="text-coral font-600 underline">conditions d'utilisation</Link> et la <Link to="/confidentialite" className="text-coral font-600 underline">politique de confidentialité</Link> de ChaletProp.
               </span>
             </label>
+            {errors.terms && <p className="text-xs text-red-500 mb-5 -mt-1">{errors.terms}</p>}
           </div>
         )}
 
@@ -280,11 +343,14 @@ export default function Register() {
             <h2 className="text-xl font-800 text-gray-900 mb-1">Votre profil propriétaire</h2>
             <p className="text-sm text-gray-400 mb-6">Parlez-nous de vos chalets.</p>
 
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
-              <select className={inputClass} value={province} onChange={e=>setProvince(e.target.value)}>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
+              <select className={fieldClass('province')} value={province} onChange={e=>{ setProvince(e.target.value); clearError('province') }}>
                 <option value="">Sélectionnez...</option>
                 {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
-              </select></div>
+              </select>
+              {errors.province && <p className="text-xs text-red-500 mt-1">{errors.province}</p>}
+            </div>
             <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Nombre de chalets</label>
               <select className={inputClass} value={chaletCount} onChange={e=>setChaletCount(e.target.value)}>
                 <option>1 chalet</option><option>2 chalets</option><option>3 à 5 chalets</option><option>6 et plus</option>
@@ -307,20 +373,36 @@ export default function Register() {
             <h2 className="text-xl font-800 text-gray-900 mb-1">Votre profil professionnel</h2>
             <p className="text-sm text-gray-400 mb-6">Aidez les propriétaires à vous trouver.</p>
 
-            <div className="mb-3"><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Adresse</label>
-              <input className={inputClass} placeholder="123 Rue Principale" value={proAddress} onChange={e=>setProAddress(e.target.value)} /></div>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Ville</label>
-                <input className={inputClass} placeholder="Mont-Tremblant" value={proCity} onChange={e=>setProCity(e.target.value)} /></div>
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
-                <select className={inputClass} value={proProvince} onChange={e=>setProProvince(e.target.value)}>
-                  <option value="">Sélectionnez...</option>
-                  {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select></div>
+            <div className="mb-3">
+              <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Adresse</label>
+              <input className={fieldClass('proAddress')} placeholder="123 Rue Principale" value={proAddress}
+                onChange={e=>{ setProAddress(e.target.value); clearError('proAddress') }} />
+              {errors.proAddress && <p className="text-xs text-red-500 mt-1">{errors.proAddress}</p>}
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Code postal</label>
-                <input className={inputClass} placeholder="J8E 1T4" maxLength={7} value={proPostalCode} onChange={e=>setProPostalCode(e.target.value.toUpperCase())} /></div>
+              <div>
+                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Ville</label>
+                <input className={fieldClass('proCity')} placeholder="Mont-Tremblant" value={proCity}
+                  onChange={e=>{ setProCity(e.target.value); clearError('proCity') }} />
+                {errors.proCity && <p className="text-xs text-red-500 mt-1">{errors.proCity}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Province</label>
+                <select className={fieldClass('proProvince')} value={proProvince}
+                  onChange={e=>{ setProProvince(e.target.value); clearError('proProvince') }}>
+                  <option value="">Sélectionnez...</option>
+                  {PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                {errors.proProvince && <p className="text-xs text-red-500 mt-1">{errors.proProvince}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Code postal</label>
+                <input className={fieldClass('proPostalCode')} placeholder="J8E 1T4" maxLength={7} value={proPostalCode}
+                  onChange={e=>{ setProPostalCode(e.target.value.toUpperCase()); clearError('proPostalCode') }} />
+                {errors.proPostalCode && <p className="text-xs text-red-500 mt-1">{errors.proPostalCode}</p>}
+              </div>
               <div><label className="block text-xs font-700 text-gray-400 uppercase tracking-wide mb-1.5">Rayon de déplacement</label>
                 <select className={inputClass} value={radius} onChange={e=>setRadius(e.target.value)}>
                   <option>10</option><option>25</option><option>50</option><option>75</option>
@@ -350,10 +432,15 @@ export default function Register() {
 
             <div className="grid grid-cols-2 gap-3 mb-2">
               <UploadBox icon="🤳" title="Selfie" subtitle="Visage visible, bonne lumière"
-                onFile={setSelfieFile} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
+                onFile={(f)=>{ setSelfieFile(f); clearError('selfieFile') }} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
               <UploadBox icon="🪪" title="Pièce d'identité" subtitle="Passeport, permis ou carte"
-                onFile={setIdFile} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
+                onFile={(f)=>{ setIdFile(f); clearError('idFile') }} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
             </div>
+            {(errors.selfieFile || errors.idFile) && (
+              <div className="mb-2 bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-700">
+                {[errors.selfieFile, errors.idFile].filter(Boolean).map((m,i) => <p key={i}>• {m}</p>)}
+              </div>
+            )}
             <p className="text-xs text-gray-400 mb-4">
               Formats acceptés : JPG, PNG, WEBP, PDF · Max 10 Mo
             </p>
@@ -373,6 +460,16 @@ export default function Register() {
           </div>
         )}
 
+        {/* Récap des champs manquants (bannière visible sous les inputs) */}
+        {Object.keys(errors).length > 1 && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+            <p className="font-700 mb-1">⚠️ Il reste {Object.keys(errors).length} champ{Object.keys(errors).length > 1 ? 's' : ''} à corriger :</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              {Object.values(errors).map((msg, i) => <li key={i}>{msg}</li>)}
+            </ul>
+          </div>
+        )}
+
         {/* ── Boutons de navigation ── */}
         <div className="flex gap-3 mt-6">
           {step > 1 && (
@@ -383,7 +480,6 @@ export default function Register() {
             type="button"
             onClick={next}
             disabled={submitDisabled}
-            title={missingProDocs ? 'Téléversez votre selfie et votre pièce d\'identité pour continuer' : undefined}
             className={`flex-1 py-3 rounded-xl font-700 text-sm text-white transition-all ${
               isTeal ? 'bg-teal hover:opacity-90' : 'bg-coral hover:bg-coral-dark'
             } disabled:opacity-60 disabled:cursor-not-allowed`}

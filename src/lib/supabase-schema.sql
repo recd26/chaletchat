@@ -717,6 +717,16 @@ create trigger trg_notify_verif_status_changed
   execute function notify_verif_status_changed();
 
 -- ============================================================
+-- CHA-40 · Colonnes profil propriétaire (chalet_count, location_type)
+-- ============================================================
+-- L'inscription proprio envoie ces deux champs (Register.jsx STEP 2 proprio)
+-- et l'AdminDashboard les affiche déjà. Sans ces colonnes l'UPDATE post-signUp
+-- échoue silencieusement et laisse le profil incomplet — bug reporté sur CHA-40.
+alter table public.profiles
+  add column if not exists chalet_count  text,
+  add column if not exists location_type text;
+
+-- ============================================================
 -- P2-4 · Tutoriel guidé calendrier (react-joyride)
 -- ============================================================
 -- Un flag horodaté qui marque la première complétion du tutoriel
