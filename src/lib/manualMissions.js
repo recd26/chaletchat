@@ -2,6 +2,14 @@
 // Une mission manuelle = un contrat externe à la plateforme (client direct du pro),
 // avec nom du chalet, date, heure de début et durée totale de nettoyage.
 
+// xlsx est chargé à la demande (import dynamique) pour éviter d'alourdir le bundle
+// principal — voir loadXlsx() ci-dessous.
+let _xlsxPromise = null
+function loadXlsx() {
+  if (!_xlsxPromise) _xlsxPromise = import('xlsx')
+  return _xlsxPromise
+}
+
 const STORAGE_KEY_PREFIX = 'chaletchat:manual-missions'
 
 function storageKey(userId) {
@@ -237,6 +245,148 @@ export function normalizeCsvRows(parsed) {
 // ── Import complet : text → validated missions + errors summary ──
 export function parseImportText(text) {
   const parsed = parseCsv(text)
+  const normalized = normalizeCsvRows(parsed)
+  const items = normalized.map((r, idx) => {
+    const v = validateMission(r)
+    return { rowNumber: idx + 2, raw: r, ...v }
+  })
+  return {
+    header: parsed.header,
+    items,
+    validCount: items.filter(i => i.valid).length,
+    invalidCount: items.filter(i => !i.valid).length,
+  }
+}
+
+// ── Template Excel (.xlsx) téléchargeable ─────────────────────
+// Contient deux feuilles :
+//   1. "Missions" — en-têtes + 2 lignes d'exemple, colonnes formatées et larges
+//   2. "Instructions" — mode d'emploi détaillé
+// Compatible Excel, Numbers, Google Sheets.
+export async function buildXlsxTemplate() {
+  const XLSX = await loadXlsx()
+  const today = new Date()
+  const in3d = new Date(today); in3d.setDate(today.getDate() + 3)
+  const in5d = new Date(today); in5d.setDate(today.getDate() + 5)
+  const ymd = d => d.toISOString().split('T')[0]
+
+  const aoa = [
+    ['chalet_name', 'date', 'start_time', 'hours'],
+    ['Chalet du Lac', ymd(in3d), '10:00', 3],
+    ['Refuge des Cerfs', ymd(in5d), '14:30', 2.5],
+  ]
+
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+
+  // Largeurs de colonnes lisibles
+  ws['!cols'] = [
+    { wch: 28 }, // chalet_name
+    { wch: 14 }, // date
+    { wch: 12 }, // start_time
+    { wch: 10 }, // hours
+  ]
+
+  // Format des cellules (dates + heures + nombres)
+  const dateFmt = 'yyyy-mm-dd'
+  const timeFmt = 'hh:mm'
+  const numFmt = '0.0'
+  for (let r = 1; r <= 2; r++) {
+    const dateAddr = XLSX.utils.encode_cell({ r, c: 1 })
+    const timeAddr = XLSX.utils.encode_cell({ r, c: 2 })
+    const hoursAddr = XLSX.utils.encode_cell({ r, c: 3 })
+    if (ws[dateAddr]) ws[dateAddr].z = dateFmt
+    if (ws[timeAddr]) ws[timeAddr].z = timeFmt
+    if (ws[hoursAddr]) ws[hoursAddr].z = numFmt
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Missions')
+
+  // Feuille "Instructions"
+  const info = [
+    ['ChaletChat — Modèle d\'import missions'],
+    [],
+    ['Remplissez une ligne par mission dans l\'onglet « Missions ».'],
+    ['Ne modifiez pas la ligne d\'en-tête (première ligne).'],
+    [],
+    ['Colonnes attendues :'],
+    ['chalet_name', 'Nom du chalet ou du client (texte)'],
+    ['date', 'Format AAAA-MM-JJ (ex : 2026-07-15)'],
+    ['start_time', 'Format HH:MM sur 24h (ex : 09:30, 14:00)'],
+    ['hours', 'Durée totale en heures (ex : 2, 2.5, 3)'],
+    [],
+    ['Astuces :'],
+    ['• Vous pouvez supprimer les 2 lignes d\'exemple avant l\'import.'],
+    ['• L\'import accepte aussi les fichiers .csv.'],
+    ['• Les colonnes date et heure sont formatées, mais vous pouvez également'],
+    ['  saisir des textes bruts au format ci-dessus.'],
+  ]
+  const wsInfo = XLSX.utils.aoa_to_sheet(info)
+  wsInfo['!cols'] = [{ wch: 22 }, { wch: 60 }]
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Instructions')
+
+  return XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+}
+
+export async function downloadXlsxTemplate(filename = 'chaletchat-modele-missions.xlsx') {
+  const buf = await buildXlsxTemplate()
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  triggerDownload(blob, filename)
+}
+
+// ── Parser Excel (.xlsx / .xls) ────────────────────────────────
+// `data` peut être un ArrayBuffer, Uint8Array, ou string binaire.
+export async function parseXlsx(data) {
+  const XLSX = await loadXlsx()
+  const wb = XLSX.read(data, { type: 'array', cellDates: false, cellNF: false })
+  // Priorité à la feuille « Missions » si elle existe, sinon 1re feuille.
+  const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'missions') || wb.SheetNames[0]
+  if (!sheetName) return { header: [], rows: [] }
+  const ws = wb.Sheets[sheetName]
+  // raw: false → conserve les strings formatées (dates → yyyy-mm-dd, heures → hh:mm)
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
+  // Ignorer commentaires '#' et lignes vides
+  const dataLines = aoa.filter(row => {
+    if (!Array.isArray(row) || row.length === 0) return false
+    const first = String(row[0] || '').trim()
+    if (first === '' && row.every(c => String(c || '').trim() === '')) return false
+    if (first.startsWith('#')) return false
+    return true
+  })
+  if (dataLines.length === 0) return { header: [], rows: [] }
+  const header = dataLines[0].map(h => String(h || '').trim().toLowerCase())
+  const rows = dataLines.slice(1).map(cells => {
+    const obj = {}
+    header.forEach((h, i) => {
+      const v = cells[i]
+      obj[h] = v == null ? '' : String(v).trim()
+    })
+    return obj
+  })
+  return { header, rows }
+}
+
+// ── Import unifié depuis un File (CSV ou XLSX) ─────────────────
+// Détecte par extension + type MIME. Retourne la même structure que parseImportText.
+export async function parseImportFile(file) {
+  if (!file) return { header: [], items: [], validCount: 0, invalidCount: 0 }
+  const name = String(file.name || '').toLowerCase()
+  const isExcel =
+    name.endsWith('.xlsx') ||
+    name.endsWith('.xls') ||
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    file.type === 'application/vnd.ms-excel'
+
+  let parsed
+  if (isExcel) {
+    const buf = await file.arrayBuffer()
+    parsed = await parseXlsx(new Uint8Array(buf))
+  } else {
+    const text = await file.text()
+    parsed = parseCsv(text)
+  }
   const normalized = normalizeCsvRows(parsed)
   const items = normalized.map((r, idx) => {
     const v = validateMission(r)

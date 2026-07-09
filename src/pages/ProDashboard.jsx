@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress, haversineDistance } from '../lib/geocode'
 import { useManualMissions } from '../hooks/useManualMissions'
-import { downloadCsvTemplate, parseImportText, validateMission } from '../lib/manualMissions'
+import { downloadXlsxTemplate, downloadCsvTemplate, parseImportFile, validateMission } from '../lib/manualMissions'
 
 const MapView = lazy(() => import('../components/MapView'))
 const CalendarTour = lazy(() => import('../components/CalendarTour'))
@@ -1916,26 +1916,40 @@ export default function ProDashboard() {
             onClick={e => e.stopPropagation()}>
             <h3 className="font-800 text-gray-900 mb-2">📥 Importer des contrats</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Chargez un fichier <strong>.csv</strong> contenant vos contrats externes. Une ligne = une mission,
-              avec <strong>nom du chalet</strong>, <strong>date</strong>, <strong>heure de début</strong> et
-              <strong> durée totale (heures)</strong>. Le modèle ci-dessous s'ouvre dans Excel, Google Sheets ou Numbers.
+              Chargez un fichier <strong>Excel (.xlsx)</strong> ou <strong>.csv</strong> contenant vos contrats externes.
+              Une ligne = une mission, avec <strong>nom du chalet</strong>, <strong>date</strong>,
+              <strong> heure de début</strong> et <strong>durée totale (heures)</strong>.
             </p>
 
             {/* Étape 1 : télécharger le modèle */}
             <div className="bg-teal/5 border border-teal/20 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-[180px]">
                   <p className="text-sm font-700 text-teal">1. Téléchargez le modèle</p>
-                  <p className="text-xs text-gray-500 mt-0.5">CSV pré-rempli avec un exemple. Compatible Excel & Google Sheets.</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Pré-rempli avec des exemples, feuille d'instructions incluse. Compatible Excel, Numbers & Google Sheets.</p>
                 </div>
-                <button
-                  onClick={() => {
-                    downloadCsvTemplate()
-                    toast('📄 Modèle téléchargé', 'success')
-                  }}
-                  className="text-xs font-700 text-white bg-teal px-3 py-2 rounded-lg hover:bg-teal/90 whitespace-nowrap">
-                  ⬇️ Modèle CSV
-                </button>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await downloadXlsxTemplate()
+                        toast('📄 Modèle Excel téléchargé', 'success')
+                      } catch (err) {
+                        toast(`❌ ${err.message}`, 'error')
+                      }
+                    }}
+                    className="text-xs font-700 text-white bg-teal px-3 py-2 rounded-lg hover:bg-teal/90 whitespace-nowrap">
+                    ⬇️ Modèle Excel
+                  </button>
+                  <button
+                    onClick={() => {
+                      downloadCsvTemplate()
+                      toast('📄 Modèle CSV téléchargé', 'success')
+                    }}
+                    className="text-xs font-700 text-teal border border-teal/40 bg-white px-3 py-2 rounded-lg hover:bg-teal/5 whitespace-nowrap">
+                    CSV
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1944,8 +1958,11 @@ export default function ProDashboard() {
               <label className="block border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-teal transition-all">
                 <div className="text-3xl mb-2">📄</div>
                 <p className="text-sm font-700 text-gray-700">2. Choisir votre fichier rempli</p>
-                <p className="text-xs text-gray-400 mt-1">CSV (max 2 Mo)</p>
-                <input type="file" accept=".csv,text/csv" className="hidden"
+                <p className="text-xs text-gray-400 mt-1">Excel (.xlsx) ou CSV — max 2 Mo</p>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  className="hidden"
                   onChange={async e => {
                     const file = e.target.files?.[0]
                     if (!file) return
@@ -1954,8 +1971,7 @@ export default function ProDashboard() {
                       return
                     }
                     try {
-                      const text = await file.text()
-                      const preview = parseImportText(text)
+                      const preview = await parseImportFile(file)
                       if (preview.items.length === 0) {
                         toast('⚠️ Aucune ligne détectée dans le fichier', 'error')
                         return
