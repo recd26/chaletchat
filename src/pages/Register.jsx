@@ -5,15 +5,18 @@ import { useToast } from '../hooks/useToast'
 import { supabase } from '../lib/supabase'
 import StepIndicator from '../components/StepIndicator'
 import PasswordInput from '../components/PasswordInput'
-import UploadBox from '../components/UploadBox'
 import Toast from '../components/Toast'
 import { PROVINCES, isValidPostalCode } from '../lib/constants'
 import { geocodeAddress } from '../lib/geocode'
-import { uploadIdDoc } from '../lib/idDocs'
 
 // ── Étapes selon le rôle ────────────────────────────────────
+// La pièce d'identité est demandée APRÈS création de compte, sur
+// /en-attente. Deux raisons : (1) conversion — un signup 2 étapes
+// convertit mieux qu'un 3-étapes avec upload de docs sur mobile ;
+// (2) l'upload dans le bucket privé `id-documents` nécessite une
+// session RLS auth.uid() valide, garantie une fois connecté.
 const STEPS_PROPRIO = ['Compte', 'Profil']
-const STEPS_PRO     = ['Compte', 'Profil', 'Identité']
+const STEPS_PRO     = ['Compte', 'Profil']
 
 // Convertit "Français et Anglais" -> ["Français","Anglais"] pour la colonne text[]
 function parseLanguages(value) {
@@ -57,10 +60,6 @@ export default function Register() {
   const [languages,   setLanguages]   = useState('Français et Anglais')
   const [bio,         setBio]         = useState('')
 
-  // Vérification
-  const [selfieFile,  setSelfieFile]  = useState(null)
-  const [idFile,      setIdFile]      = useState(null)
-
   const steps      = role === 'proprio' ? STEPS_PROPRIO : STEPS_PRO
   const isTeal     = role === 'pro'
   const totalSteps = steps.length
@@ -89,10 +88,6 @@ export default function Register() {
       if (!proCity)     e.proCity     = 'Ville requise'
       if (!proProvince) e.proProvince = 'Province requise'
       if (!isValidPostalCode(proPostalCode)) e.proPostalCode = 'Code postal invalide (ex: J8E 1T4)'
-    }
-    if (step === 3 && role === 'pro') {
-      if (!selfieFile) e.selfieFile = 'Selfie requis'
-      if (!idFile)     e.idFile     = 'Pièce d\'identité requise'
     }
     return e
   }
@@ -134,8 +129,9 @@ export default function Register() {
         if (coords) { proLat = coords.lat; proLng = coords.lng }
       }
 
-      // 1) Créer le compte d'abord — il faut être authentifié pour
-      //    uploader dans id-documents (RLS : premier segment du path = auth.uid).
+      // Créer le compte. La pièce d'identité (pro) est téléversée
+      // APRÈS, depuis /en-attente : la session RLS est alors garantie
+      // (auth.uid() défini) et le signup reste court (2 étapes).
       const signUpResult = await signUp({
         email,
         password: pw,
@@ -170,47 +166,13 @@ export default function Register() {
         }),
       })
 
-      // Si Supabase exige la confirmation d'email (email_confirm activé),
-      // signUp() ne crée pas de session. Les uploads dans le bucket
-      // id-documents nécessitent auth.uid() (RLS), donc on ne peut pas les
-      // téléverser tant que l'utilisateur n'a pas confirmé son email.
-      const newUserId = signUpResult?.user?.id
       const hasSession = !!signUpResult?.session
       const needsEmailConfirm = !hasSession
-      let idUploadFailed = false
-
-      // 2) Upload selfie + ID sous {userId}/... puis persister le chemin de stockage
-      //    (pas d'URL publique — l'admin régénère une URL signée à l'affichage).
-      if (role === 'pro' && newUserId && hasSession) {
-        const docUpdates = {}
-        try {
-          if (selfieFile) {
-            docUpdates.selfie_url = await uploadIdDoc({
-              userId: newUserId, type: 'selfie', file: selfieFile,
-            })
-          }
-          if (idFile) {
-            docUpdates.id_card_url = await uploadIdDoc({
-              userId: newUserId, type: 'id_card', file: idFile,
-            })
-          }
-          if (Object.keys(docUpdates).length > 0) {
-            const { error: docErr } = await supabase.from('profiles').update(docUpdates).eq('id', newUserId)
-            if (docErr) throw docErr
-          }
-        } catch (err) {
-          idUploadFailed = true
-          // Le compte existe, mais les docs n'ont pas été enregistrés — on
-          // laisse le pro les re-uploader depuis son ProDashboard plutôt
-          // que d'échouer complètement.
-          toast(`⚠️ Documents non enregistrés (${err.message}). Vous pourrez les téléverser depuis votre profil.`, 'error')
-        }
-      }
 
       if (needsEmailConfirm) {
-        toast('📧 Compte créé ! Confirmez votre courriel puis reconnectez-vous pour finaliser votre profil.', 'success')
-      } else if (idUploadFailed) {
-        toast('⚠️ Compte créé, mais téléversez vos documents depuis votre profil pour être vérifié·e.', 'info')
+        toast('📧 Compte créé ! Confirmez votre courriel puis connectez-vous pour finaliser votre profil.', 'success')
+      } else if (role === 'pro') {
+        toast('🎉 Compte créé ! Téléversez maintenant votre pièce d\'identité pour finaliser votre inscription.', 'success')
       } else {
         toast('🎉 Compte créé ! En attente d\'approbation par l\'administrateur.', 'success')
       }
@@ -424,39 +386,11 @@ export default function Register() {
           </div>
         )}
 
-        {/* ──────── STEP 3 PRO : Identité ──────── */}
-        {step === 3 && role === 'pro' && (
-          <div>
-            <h2 className="text-xl font-800 text-gray-900 mb-1">Vérification d'identité 🪪</h2>
-            <p className="text-sm text-gray-400 mb-5">Documents chiffrés, jamais partagés avec les propriétaires. Vérification sous 24h.</p>
-
-            <div className="grid grid-cols-2 gap-3 mb-2">
-              <UploadBox icon="🤳" title="Selfie" subtitle="Visage visible, bonne lumière"
-                onFile={(f)=>{ setSelfieFile(f); clearError('selfieFile') }} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
-              <UploadBox icon="🪪" title="Pièce d'identité" subtitle="Passeport, permis ou carte"
-                onFile={(f)=>{ setIdFile(f); clearError('idFile') }} onError={(msg) => toast(`⚠️ ${msg}`, 'error')} teal />
-            </div>
-            {(errors.selfieFile || errors.idFile) && (
-              <div className="mb-2 bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-700">
-                {[errors.selfieFile, errors.idFile].filter(Boolean).map((m,i) => <p key={i}>• {m}</p>)}
-              </div>
-            )}
-            <p className="text-xs text-gray-400 mb-4">
-              Formats acceptés : JPG, PNG, WEBP, PDF · Max 10 Mo
-            </p>
-
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <p className="text-xs font-700 text-gray-800 mb-2">📋 Critères acceptés</p>
-              <div className="grid grid-cols-2 gap-1 text-xs text-gray-400">
-                <span>✅ Document officiel gouvernemental</span><span>✅ Non expiré</span>
-                <span>✅ 4 coins entièrement visibles</span><span>✅ Texte lisible</span>
-                <span>❌ Pas de photocopie</span><span>❌ Pas de reflets</span>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
-              🔐 Chiffrement AES-256 — réponse sous 24h par courriel.
-            </div>
+        {/* Note vérification identité — étape post-signup pour les pros */}
+        {step === 2 && role === 'pro' && (
+          <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+            🪪 <span className="font-700">Pièce d'identité :</span> vous la téléverserez juste après la création du compte,
+            pour que votre profil soit validé par l'administrateur (~24h).
           </div>
         )}
 
