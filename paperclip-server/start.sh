@@ -8,13 +8,11 @@ echo "==================================="
 # Vérifier les variables d'environnement requises
 if [ -z "$DATABASE_URL" ]; then
   echo "⚠️  DATABASE_URL not set. Paperclip needs PostgreSQL."
-  echo "   Add a PostgreSQL service in Railway and it will be injected automatically."
   exit 1
 fi
 
 if [ -z "$ANTHROPIC_API_KEY" ]; then
   echo "⚠️  ANTHROPIC_API_KEY not set. Agents won't work."
-  echo "   Add it in Railway → Variables tab."
 fi
 
 if [ -z "$PAPERCLIP_AGENT_JWT_SECRET" ]; then
@@ -25,6 +23,7 @@ fi
 # Cloner le repo ChaletProp comme workspace des agents
 if [ ! -d "/workspace/chaletchat" ] && [ -n "$GITHUB_TOKEN" ]; then
   echo "📦 Cloning ChaletProp repo as agent workspace..."
+  mkdir -p /workspace
   cd /workspace
   git clone https://x-access-token:${GITHUB_TOKEN}@github.com/recd26/chaletchat.git
   cd chaletchat
@@ -32,10 +31,13 @@ if [ ! -d "/workspace/chaletchat" ] && [ -n "$GITHUB_TOKEN" ]; then
   git config --local user.name "Paperclip Agents"
 fi
 
-# Utiliser le PORT de Railway ou 3100 par défaut
+# Railway injecte PORT — Paperclip doit l'utiliser
 export PORT="${PORT:-3100}"
+export PAPERCLIP_PORT="$PORT"
+export PAPERCLIP_HOST="0.0.0.0"
+export PAPERCLIP_BIND="lan"
 
-echo "✅ Starting Paperclip on port $PORT..."
+echo "✅ Starting Paperclip on 0.0.0.0:$PORT..."
 echo "==================================="
 
 # Onboarder si pas encore fait (idempotent)
@@ -45,4 +47,4 @@ if [ ! -f "/root/.paperclip/instances/default/config.json" ]; then
 fi
 
 # Lancer Paperclip
-exec npx paperclipai run --bind 0.0.0.0
+exec npx paperclipai run
