@@ -59,15 +59,20 @@ export function AuthProvider({ children }) {
     })
     if (error) throw error
 
-    // Mettre à jour le profil avec les infos supplémentaires
-    if (data.user && Object.keys(rest).length > 0) {
-      await supabase.from('profiles').update({
+    // Le trigger P0-9 `on_auth_user_created` a déjà créé la row profile
+    // avec (id, role, first_name, last_name, phone). On upsert (au lieu
+    // d'un update silencieux si la row manque) pour enrichir avec les
+    // champs supplémentaires (adresse pro, bio, verif_status, etc.).
+    if (data.user) {
+      const { error: upsertError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        role,
         first_name: firstName,
         last_name: lastName,
         phone,
-        role,
-        ...rest
-      }).eq('id', data.user.id)
+        ...rest,
+      }, { onConflict: 'id' })
+      if (upsertError) throw upsertError
     }
 
     return data
