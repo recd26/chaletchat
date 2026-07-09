@@ -8,11 +8,32 @@ import { Camera, CheckCircle, Star, MessageSquare, Upload, ChevronDown, ChevronU
 import { supabase } from '../lib/supabase'
 import { PROVINCES } from '../lib/constants'
 import { geocodeAddress, haversineDistance } from '../lib/geocode'
+import { useManualMissions } from '../hooks/useManualMissions'
+import { downloadCsvTemplate, parseImportText, validateMission } from '../lib/manualMissions'
 
 const MapView = lazy(() => import('../components/MapView'))
 const CalendarTour = lazy(() => import('../components/CalendarTour'))
 
 const TABS = ['📍 Demandes', '⏳ Offres envoyées', '✅ Confirmées', '📅 Calendrier', '👤 Profil', '📋 Historique']
+
+// Brouillon vide pour l'ajout manuel de mission (rempli dans la modale)
+function emptyManualDraft() {
+  return { chalet_name: '', date: '', start_time: '09:00', hours: '2' }
+}
+
+// Créneaux d'heure de début (06:00 → 20:30, pas de 30 min) — utilisés dans les dropdowns
+const TIME_OPTIONS = (() => {
+  const out = []
+  for (let h = 6; h <= 20; h++) {
+    out.push(`${String(h).padStart(2, '0')}:00`)
+    out.push(`${String(h).padStart(2, '0')}:30`)
+  }
+  out.push('21:00')
+  return out
+})()
+
+// Durées en heures (0.5 à 12h) — utilisées dans les dropdowns
+const HOURS_OPTIONS = ['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '6', '7', '8', '10', '12']
 
 export default function ProDashboard() {
   const { profile, updateProfile } = useAuth()
@@ -92,9 +113,16 @@ export default function ProDashboard() {
   // Calendrier — tutoriel + filtres + placeholders
   const [tourRun, setTourRun] = useState(false)
   const [tourReady, setTourReady] = useState(false)
-  const [calFilter, setCalFilter] = useState('all') // 'all' | 'missions' | 'open'
+  const [calFilter, setCalFilter] = useState('all') // 'all' | 'missions' | 'open' | 'manual'
   const [showImportModal, setShowImportModal] = useState(false)
   const [showManualMissionModal, setShowManualMissionModal] = useState(false)
+  // Import CSV — preview des lignes analysées avant enregistrement
+  const [importPreview, setImportPreview] = useState(null) // { items, validCount, invalidCount, filename }
+  const [importing, setImporting] = useState(false)
+  // Ajout manuel multi-lignes
+  const [manualDrafts, setManualDrafts] = useState(() => [emptyManualDraft()])
+  // Missions manuelles + importées persistées localement
+  const { missions: manualMissions, addManualMissions, deleteManualMission } = useManualMissions()
 
   // Helpers pour les cartes de demande
   function isAutoUrgent(req) {
@@ -1016,6 +1044,7 @@ export default function ProDashboard() {
                 <option value="all">Tout</option>
                 <option value="missions">Missions confirmées</option>
                 <option value="open">Demandes ouvertes</option>
+                <option value="manual">Missions perso</option>
               </select>
               <button
                 onClick={startCalendarTour}
@@ -1049,10 +1078,20 @@ export default function ProDashboard() {
 
             // Index demandes ouvertes par date (coral) — masqué si filtre = "missions"
             const openByDate = {}
-            if (calFilter !== 'missions') {
+            if (calFilter !== 'missions' && calFilter !== 'manual') {
               openReqs.forEach(r => {
                 if (!openByDate[r.scheduled_date]) openByDate[r.scheduled_date] = []
                 openByDate[r.scheduled_date].push(r)
+              })
+            }
+
+            // Index missions manuelles + importées par date (violet)
+            const manualByDate = {}
+            if (calFilter === 'all' || calFilter === 'manual' || calFilter === 'missions') {
+              manualMissions.forEach(m => {
+                if (calFilter === 'missions' && m.source !== 'manual' && m.source !== 'import') return
+                if (!manualByDate[m.date]) manualByDate[m.date] = []
+                manualByDate[m.date].push(m)
               })
             }
 
@@ -1142,20 +1181,21 @@ export default function ProDashboard() {
                       const isToday = dateStr === todayStr
                       const missions = missionsByDate[dateStr] || []
                       const openItems = openByDate[dateStr] || []
+                      const manualItems = manualByDate[dateStr] || []
                       const hasMission = missions.length > 0
                       const hasOpen = openItems.length > 0
+                      const hasManual = manualItems.length > 0
                       const isPast = new Date(dateStr) < new Date(todayStr)
-                      const hasAny = hasMission || hasOpen
-                      const allItems = [...missions, ...openItems]
+                      const hasAny = hasMission || hasOpen || hasManual
 
                       // Construire le tooltip
                       const tooltipLines = []
                       if (hasMission) tooltipLines.push(`✅ ${missions.length} confirmée${missions.length > 1 ? 's' : ''}`)
                       if (hasOpen) tooltipLines.push(`📍 ${openItems.length} demande${openItems.length > 1 ? 's' : ''} ouverte${openItems.length > 1 ? 's' : ''}`)
-                      allItems.forEach(r => {
-                        const isMission = missions.includes(r)
-                        tooltipLines.push(`${isMission ? '  ✅' : '  📍'} ${r.chalet?.name || 'Chalet'} — ${r.scheduled_time || '?'} — ${isMission ? r.agreed_price : r.suggested_budget || '?'}$`)
-                      })
+                      if (hasManual) tooltipLines.push(`📝 ${manualItems.length} perso`)
+                      missions.forEach(r => tooltipLines.push(`  ✅ ${r.chalet?.name || 'Chalet'} — ${r.scheduled_time || '?'} — ${r.agreed_price || '?'}$`))
+                      openItems.forEach(r => tooltipLines.push(`  📍 ${r.chalet?.name || 'Chalet'} — ${r.scheduled_time || '?'} — ${r.suggested_budget || '?'}$`))
+                      manualItems.forEach(m => tooltipLines.push(`  📝 ${m.chalet_name} — ${m.start_time} — ${m.hours}h`))
 
                       return (
                         <div key={dateStr}
@@ -1166,17 +1206,21 @@ export default function ProDashboard() {
                             : hasMission && hasOpen ? 'bg-amber-50 border border-amber-300 text-amber-700 font-800 cursor-pointer hover:bg-amber-100'
                             : hasMission ? 'bg-teal/10 text-teal font-800 cursor-pointer hover:bg-teal/20'
                             : hasOpen ? 'bg-coral/10 text-coral font-700 cursor-pointer hover:bg-coral/20'
+                            : hasManual ? 'bg-violet-100 text-violet-700 font-700 cursor-pointer hover:bg-violet-200'
                             : isPast ? 'text-gray-300'
                             : 'text-gray-600 hover:bg-gray-50'
                           }`}>
                           <span className="text-sm">{day}</span>
-                          {(hasMission || hasOpen) && (
+                          {hasAny && (
                             <div className="flex gap-0.5 mt-0.5">
                               {missions.slice(0, 2).map((_, i) => (
                                 <div key={`m${i}`} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-teal'}`} />
                               ))}
                               {openItems.slice(0, 2).map((_, i) => (
                                 <div key={`o${i}`} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white/60' : 'bg-coral'}`} />
+                              ))}
+                              {manualItems.slice(0, 2).map((_, i) => (
+                                <div key={`p${i}`} className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white/60' : 'bg-violet-500'}`} />
                               ))}
                             </div>
                           )}
@@ -1208,6 +1252,15 @@ export default function ProDashboard() {
                                   </div>
                                 </div>
                               ))}
+                              {manualItems.map(m => (
+                                <div key={m.id} className="flex items-center gap-2 py-1 border-b border-gray-700 last:border-0">
+                                  <span className="text-xs">📝</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-700 truncate text-violet-300">{m.chalet_name}</p>
+                                    <p className="text-[10px] text-gray-400">{m.start_time} • {m.hours}h</p>
+                                  </div>
+                                </div>
+                              ))}
                               {hasMission && hasOpen && (
                                 <p className="text-[9px] text-amber-400 font-600 mt-1">⚠️ Conflit potentiel</p>
                               )}
@@ -1223,6 +1276,7 @@ export default function ProDashboard() {
                   <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
                     <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-teal" /> Confirmée</span>
                     <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-coral" /> Demande ouverte</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-violet-500" /> Mission perso</span>
                     <span data-tour="calendar-conflicts" className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md">
                       <span className="text-[9px]">⚠️</span> Conflit potentiel
                     </span>
@@ -1257,16 +1311,18 @@ export default function ProDashboard() {
                           const isToday = ds === todayStr
                           const dayMissions = missionsByDate[ds] || []
                           const dayOpen = openByDate[ds] || []
+                          const dayManual = manualByDate[ds] || []
                           return (
                             <div key={ds} className={`py-2 px-1 text-center border-l border-gray-100 ${isToday ? 'bg-teal/5' : ''}`}>
                               <p className={`text-[10px] uppercase font-700 ${isToday ? 'text-teal' : 'text-gray-400'}`}>
                                 {d.toLocaleDateString('fr-CA', { weekday: 'short' })}
                               </p>
                               <p className={`text-sm font-800 ${isToday ? 'text-teal' : 'text-gray-700'}`}>{d.getDate()}</p>
-                              {(dayMissions.length > 0 || dayOpen.length > 0) && (
+                              {(dayMissions.length > 0 || dayOpen.length > 0 || dayManual.length > 0) && (
                                 <div className="flex justify-center gap-0.5 mt-0.5">
                                   {dayMissions.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-teal" />}
                                   {dayOpen.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-coral" />}
+                                  {dayManual.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
                                 </div>
                               )}
                             </div>
@@ -1285,11 +1341,15 @@ export default function ProDashboard() {
                             const isToday = ds === todayStr
                             const dayMissions = missionsByDate[ds] || []
                             const dayOpen = openByDate[ds] || []
+                            const dayManual = manualByDate[ds] || []
                             const missionsInSlot = dayMissions.filter(r => {
                               const t = parseTime(r.scheduled_time); return t !== null && t >= hour && t < hour + 1
                             })
                             const openInSlot = dayOpen.filter(r => {
                               const t = parseTime(r.scheduled_time); return t !== null && t >= hour && t < hour + 1
+                            })
+                            const manualInSlot = dayManual.filter(m => {
+                              const t = parseTime(m.start_time); return t !== null && t >= hour && t < hour + 1
                             })
 
                             return (
@@ -1317,6 +1377,25 @@ export default function ProDashboard() {
                                     <p className="text-[9px] opacity-80">{req.scheduled_time} • {req.suggested_budget || '?'}$</p>
                                   </div>
                                 ))}
+                                {manualInSlot.map(m => {
+                                  const h = parseFloat(m.hours) || 1
+                                  return (
+                                    <div key={m.id}
+                                      onClick={() => {
+                                        if (window.confirm(`Supprimer la mission "${m.chalet_name}" du ${m.date} ?`)) {
+                                          deleteManualMission(m.id)
+                                          toast('🗑️ Mission supprimée', 'info')
+                                        }
+                                      }}
+                                      title="Cliquer pour supprimer"
+                                      className="bg-violet-500 text-white rounded-lg px-1.5 py-1 cursor-pointer hover:bg-violet-600 transition-all mb-0.5"
+                                      style={{ minHeight: `${Math.max(h, 1) * 44}px` }}>
+                                      <p className="text-[10px] font-700 truncate">📝 {m.chalet_name}</p>
+                                      <p className="text-[9px] opacity-80">{m.start_time} • {m.hours}h</p>
+                                      <p className="text-[9px] opacity-70">{m.source === 'import' ? '📥 Importé' : '➕ Ajouté'}</p>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             )
                           })}
@@ -1829,66 +1908,276 @@ export default function ProDashboard() {
 
       <Toast toasts={toasts} />
 
-      {/* ── Modal : Importer contrats (placeholder) ── */}
+      {/* ── Modal : Importer contrats ── */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-          onClick={() => setShowImportModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+          onClick={() => { if (!importing) { setShowImportModal(false); setImportPreview(null) } }}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
             <h3 className="font-800 text-gray-900 mb-2">📥 Importer des contrats</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Chargez un fichier <strong>.csv</strong> ou <strong>.ics</strong> contenant vos contrats existants
-              (adresse, date, heure). Nous créerons automatiquement les entrées calendrier correspondantes.
+              Chargez un fichier <strong>.csv</strong> contenant vos contrats externes. Une ligne = une mission,
+              avec <strong>nom du chalet</strong>, <strong>date</strong>, <strong>heure de début</strong> et
+              <strong> durée totale (heures)</strong>. Le modèle ci-dessous s'ouvre dans Excel, Google Sheets ou Numbers.
             </p>
-            <label className="block border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-teal transition-all">
-              <div className="text-3xl mb-2">📄</div>
-              <p className="text-sm font-700 text-gray-700">Choisir un fichier</p>
-              <p className="text-xs text-gray-400 mt-1">CSV ou ICS (max 5 Mo)</p>
-              <input type="file" accept=".csv,.ics" className="hidden"
-                onChange={() => {
-                  toast('🚧 Import de contrats — fonctionnalité arrivant bientôt', 'info')
-                  setShowImportModal(false)
-                }} />
-            </label>
-            <div className="flex justify-end mt-4">
-              <button onClick={() => setShowImportModal(false)}
-                className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
-                Fermer
-              </button>
+
+            {/* Étape 1 : télécharger le modèle */}
+            <div className="bg-teal/5 border border-teal/20 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-700 text-teal">1. Téléchargez le modèle</p>
+                  <p className="text-xs text-gray-500 mt-0.5">CSV pré-rempli avec un exemple. Compatible Excel & Google Sheets.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    downloadCsvTemplate()
+                    toast('📄 Modèle téléchargé', 'success')
+                  }}
+                  className="text-xs font-700 text-white bg-teal px-3 py-2 rounded-lg hover:bg-teal/90 whitespace-nowrap">
+                  ⬇️ Modèle CSV
+                </button>
+              </div>
             </div>
+
+            {/* Étape 2 : uploader */}
+            {!importPreview && (
+              <label className="block border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-teal transition-all">
+                <div className="text-3xl mb-2">📄</div>
+                <p className="text-sm font-700 text-gray-700">2. Choisir votre fichier rempli</p>
+                <p className="text-xs text-gray-400 mt-1">CSV (max 2 Mo)</p>
+                <input type="file" accept=".csv,text/csv" className="hidden"
+                  onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    if (file.size > 2 * 1024 * 1024) {
+                      toast('❌ Fichier trop volumineux (max 2 Mo)', 'error')
+                      return
+                    }
+                    try {
+                      const text = await file.text()
+                      const preview = parseImportText(text)
+                      if (preview.items.length === 0) {
+                        toast('⚠️ Aucune ligne détectée dans le fichier', 'error')
+                        return
+                      }
+                      setImportPreview({ ...preview, filename: file.name })
+                    } catch (err) {
+                      toast(`❌ Erreur de lecture : ${err.message}`, 'error')
+                    }
+                    e.target.value = ''
+                  }} />
+              </label>
+            )}
+
+            {/* Étape 3 : preview + confirmer */}
+            {importPreview && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-700 text-gray-700">
+                    📊 Aperçu ({importPreview.filename})
+                  </p>
+                  <button
+                    onClick={() => setImportPreview(null)}
+                    className="text-xs text-gray-500 hover:text-gray-700">
+                    Changer de fichier
+                  </button>
+                </div>
+                <div className="flex gap-2 mb-3 text-xs">
+                  <span className="px-2 py-1 rounded-md bg-teal/10 text-teal font-700">
+                    ✅ {importPreview.validCount} valide{importPreview.validCount > 1 ? 's' : ''}
+                  </span>
+                  {importPreview.invalidCount > 0 && (
+                    <span className="px-2 py-1 rounded-md bg-coral/10 text-coral font-700">
+                      ❌ {importPreview.invalidCount} en erreur
+                    </span>
+                  )}
+                </div>
+                <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 font-700">#</th>
+                        <th className="text-left px-2 py-1.5 font-700">Chalet</th>
+                        <th className="text-left px-2 py-1.5 font-700">Date</th>
+                        <th className="text-left px-2 py-1.5 font-700">Heure</th>
+                        <th className="text-left px-2 py-1.5 font-700">Durée</th>
+                        <th className="text-left px-2 py-1.5 font-700">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.items.slice(0, 50).map(it => (
+                        <tr key={it.rowNumber} className={`border-t border-gray-100 ${it.valid ? '' : 'bg-coral/5'}`}>
+                          <td className="px-2 py-1.5 text-gray-400">L{it.rowNumber}</td>
+                          <td className="px-2 py-1.5 font-600 text-gray-800 truncate max-w-[140px]">{it.raw.chalet_name || '—'}</td>
+                          <td className="px-2 py-1.5">{it.raw.date || '—'}</td>
+                          <td className="px-2 py-1.5">{it.raw.start_time || '—'}</td>
+                          <td className="px-2 py-1.5">{it.raw.hours ? `${it.raw.hours}h` : '—'}</td>
+                          <td className="px-2 py-1.5">
+                            {it.valid ? (
+                              <span className="text-teal">✅</span>
+                            ) : (
+                              <span className="text-coral" title={it.errors.join(', ')}>❌ {it.errors[0]}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importPreview.items.length > 50 && (
+                    <p className="text-[11px] text-gray-400 px-2 py-1.5 border-t border-gray-100">
+                      … {importPreview.items.length - 50} autres lignes non affichées
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => { setImportPreview(null); setShowImportModal(false) }}
+                    disabled={importing}
+                    className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => {
+                      const validItems = importPreview.items.filter(i => i.valid)
+                      if (validItems.length === 0) {
+                        toast('❌ Aucune ligne valide à importer', 'error')
+                        return
+                      }
+                      setImporting(true)
+                      try {
+                        addManualMissions(validItems.map(i => ({ ...i.mission, source: 'import' })))
+                        toast(`✅ ${validItems.length} mission${validItems.length > 1 ? 's' : ''} importée${validItems.length > 1 ? 's' : ''}`, 'success')
+                        setImportPreview(null)
+                        setShowImportModal(false)
+                      } catch (err) {
+                        toast(`❌ ${err.message}`, 'error')
+                      } finally {
+                        setImporting(false)
+                      }
+                    }}
+                    disabled={importing || importPreview.validCount === 0}
+                    className="text-xs font-700 text-white bg-teal px-4 py-2 rounded-lg hover:bg-teal/90 disabled:opacity-50">
+                    {importing ? '⏳ Import…' : `Importer ${importPreview.validCount} mission${importPreview.validCount > 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!importPreview && (
+              <div className="flex justify-end mt-4">
+                <button onClick={() => setShowImportModal(false)}
+                  className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
+                  Fermer
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Modal : Ajouter une mission manuelle (placeholder) ── */}
+      {/* ── Modal : Ajouter des missions manuelles (multi-lignes) ── */}
       {showManualMissionModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-          onClick={() => setShowManualMissionModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <h3 className="font-800 text-gray-900 mb-2">➕ Ajouter une mission manuelle</h3>
+          onClick={() => { setShowManualMissionModal(false); setManualDrafts([emptyManualDraft()]) }}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+            <h3 className="font-800 text-gray-900 mb-1">➕ Ajouter des missions perso</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Bloquez une plage de temps pour une mission hors plateforme. Elle apparaîtra dans votre
-              calendrier sans être visible par les propriétaires ChaletProp.
+              Bloquez une ou plusieurs plages pour des contrats externes. Elles apparaîtront en <span className="text-violet-600 font-700">violet</span> sur votre calendrier — invisibles pour les propriétaires ChaletProp.
             </p>
-            <div className="space-y-3">
-              <input type="text" placeholder="Nom du chalet / lieu"
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
-              <div className="grid grid-cols-2 gap-2">
-                <input type="date" className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
-                <input type="time" className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
+
+            <div className="space-y-2 mb-3">
+              {/* En-têtes colonne (visible sur écrans moyens+) */}
+              <div className="hidden sm:grid grid-cols-[1.5fr_1fr_1fr_1fr_auto] gap-2 px-1 text-[10px] font-700 uppercase text-gray-400">
+                <div>Chalet / client</div>
+                <div>Date</div>
+                <div>Heure début</div>
+                <div>Durée (h)</div>
+                <div />
               </div>
+
+              {manualDrafts.map((row, idx) => {
+                const update = (patch) => setManualDrafts(drafts => drafts.map((d, i) => i === idx ? { ...d, ...patch } : d))
+                const remove = () => setManualDrafts(drafts => drafts.length === 1 ? [emptyManualDraft()] : drafts.filter((_, i) => i !== idx))
+                return (
+                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1.5fr_1fr_1fr_1fr_auto] gap-2 items-center p-2 rounded-xl bg-gray-50">
+                    <input
+                      type="text"
+                      list="manual-chalet-suggestions"
+                      value={row.chalet_name}
+                      onChange={e => update({ chalet_name: e.target.value })}
+                      placeholder="Ex. Chalet du Lac"
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-teal focus:outline-none" />
+                    <input
+                      type="date"
+                      value={row.date}
+                      onChange={e => update({ date: e.target.value })}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-teal focus:outline-none" />
+                    <select
+                      value={row.start_time}
+                      onChange={e => update({ start_time: e.target.value })}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-teal focus:outline-none">
+                      {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      value={row.hours}
+                      onChange={e => update({ hours: e.target.value })}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:border-teal focus:outline-none">
+                      {HOURS_OPTIONS.map(h => <option key={h} value={h}>{h} h</option>)}
+                    </select>
+                    <button
+                      onClick={remove}
+                      title="Supprimer cette ligne"
+                      className="text-gray-400 hover:text-coral text-lg font-800 px-2 py-1">
+                      ×
+                    </button>
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowManualMissionModal(false)}
+
+            {/* Datalist : suggestions basées sur missions déjà connues */}
+            <datalist id="manual-chalet-suggestions">
+              {Array.from(new Set([
+                ...myActive.map(r => r.chalet?.name).filter(Boolean),
+                ...myCompleted.map(r => r.chalet?.name).filter(Boolean),
+                ...manualMissions.map(m => m.chalet_name),
+              ])).map(name => <option key={name} value={name} />)}
+            </datalist>
+
+            <button
+              onClick={() => setManualDrafts(drafts => [...drafts, emptyManualDraft()])}
+              className="w-full text-xs font-700 text-teal border border-dashed border-teal/40 rounded-lg py-2 hover:bg-teal/5 transition-all mb-4">
+              + Ajouter une autre mission
+            </button>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowManualMissionModal(false); setManualDrafts([emptyManualDraft()]) }}
                 className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
                 Annuler
               </button>
               <button
                 onClick={() => {
-                  toast('🚧 Missions manuelles — fonctionnalité arrivant bientôt', 'info')
+                  const validated = manualDrafts
+                    .filter(d => d.chalet_name.trim() || d.date || d.hours) // ignorer les brouillons vides
+                    .map(d => validateMission(d))
+                  const errs = validated.filter(v => !v.valid)
+                  if (validated.length === 0) {
+                    toast('⚠️ Remplissez au moins une mission', 'error')
+                    return
+                  }
+                  if (errs.length > 0) {
+                    toast(`❌ ${errs.length} ligne${errs.length > 1 ? 's' : ''} invalide${errs.length > 1 ? 's' : ''} — ${errs[0].errors.join(', ')}`, 'error')
+                    return
+                  }
+                  addManualMissions(validated.map(v => ({ ...v.mission, source: 'manual' })))
+                  toast(`✅ ${validated.length} mission${validated.length > 1 ? 's' : ''} ajoutée${validated.length > 1 ? 's' : ''}`, 'success')
                   setShowManualMissionModal(false)
+                  setManualDrafts([emptyManualDraft()])
                 }}
                 className="text-xs font-700 text-white bg-teal px-4 py-2 rounded-lg hover:bg-teal/90">
-                Ajouter
+                Enregistrer
               </button>
             </div>
           </div>
