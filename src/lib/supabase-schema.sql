@@ -83,8 +83,8 @@ create table public.checklist_templates (
 create table public.cleaning_requests (
   id              uuid default uuid_generate_v4() primary key,
   chalet_id       uuid references public.chalets(id) on delete cascade not null,
-  owner_id        uuid references public.profiles(id) not null,
-  assigned_pro_id uuid references public.profiles(id),
+  owner_id        uuid references public.profiles(id) on delete cascade not null,
+  assigned_pro_id uuid references public.profiles(id) on delete set null,
   -- Planification
   scheduled_date  date not null,
   scheduled_time  time not null,
@@ -114,7 +114,7 @@ create table public.cleaning_requests (
 create table public.offers (
   id          uuid default uuid_generate_v4() primary key,
   request_id  uuid references public.cleaning_requests(id) on delete cascade not null,
-  pro_id      uuid references public.profiles(id) not null,
+  pro_id      uuid references public.profiles(id) on delete cascade not null,
   price       numeric(10,2) not null,
   message     text,
   status      text default 'pending' check (status in ('pending','accepted','declined')),
@@ -136,9 +136,9 @@ create table public.checklist_completions (
 -- ─── ÉVALUATIONS ─────────────────────────────────────────────
 create table public.reviews (
   id          uuid default uuid_generate_v4() primary key,
-  request_id  uuid references public.cleaning_requests(id) not null,
-  reviewer_id uuid references public.profiles(id) not null,
-  reviewee_id uuid references public.profiles(id) not null,
+  request_id  uuid references public.cleaning_requests(id) on delete cascade not null,
+  reviewer_id uuid references public.profiles(id) on delete cascade not null,
+  reviewee_id uuid references public.profiles(id) on delete cascade not null,
   rating      int not null check (rating between 1 and 5),
   comment     text,
   created_at  timestamptz default now(),
@@ -149,7 +149,7 @@ create table public.reviews (
 create table public.messages (
   id          uuid default uuid_generate_v4() primary key,
   request_id  uuid references public.cleaning_requests(id) on delete cascade not null,
-  sender_id   uuid references public.profiles(id) not null,
+  sender_id   uuid references public.profiles(id) on delete cascade not null,
   content     text not null,
   read_at     timestamptz,
   created_at  timestamptz default now()
