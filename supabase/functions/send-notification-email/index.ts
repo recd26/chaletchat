@@ -12,8 +12,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+type EmailPayload = {
+  userId: string
+  type: string
+  title?: string
+  body?: string
+  requestId?: string
+  role?: 'pro' | 'proprio'
+  reason?: string | null
+}
+
 // Templates d'email par type de notification
-function getEmailContent(type: string, title: string, body: string, firstName: string): { subject: string; html: string } {
+function getEmailContent(
+  type: string,
+  title: string,
+  body: string,
+  firstName: string,
+  role?: string,
+  reason?: string | null,
+): { subject: string; html: string } {
   const baseStyle = `
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     max-width: 560px; margin: 0 auto; padding: 32px 24px;
@@ -30,9 +47,13 @@ function getEmailContent(type: string, title: string, body: string, firstName: s
     offer_declined:      { accent: '#6B7280', bg: '#F9FAFB', emoji: '❌' },
     cleaning_completed:  { accent: '#0D9488', bg: '#F0FDFA', emoji: '🎉' },
     new_message:         { accent: '#3B82F6', bg: '#EFF6FF', emoji: '💬' },
+    account_approved:    { accent: '#0D9488', bg: '#F0FDFA', emoji: '🎉' },
+    account_rejected:    { accent: '#EF4444', bg: '#FEF2F2', emoji: '📋' },
   }
 
   const c = colors[type] || colors.new_message
+
+  const dashboardPath = role === 'proprio' ? '/dashboard' : '/pro'
 
   const ctaText: Record<string, string> = {
     new_request_nearby:  'Voir la demande',
@@ -40,8 +61,85 @@ function getEmailContent(type: string, title: string, body: string, firstName: s
     offer_accepted:      'Voir ma mission',
     cleaning_completed:  'Voir le résultat',
     new_message:         'Lire le message',
+    account_approved:    role === 'proprio' ? 'Accéder à mon tableau de bord' : 'Accéder à mon espace pro',
+    account_rejected:    'Corriger mon profil',
   }
 
+  const ctaLink: Record<string, string> = {
+    account_approved: `${APP_URL}${dashboardPath}`,
+    account_rejected: `${APP_URL}/en-attente`,
+  }
+
+  // Templates spécifiques account_approved / account_rejected
+  if (type === 'account_approved') {
+    const html = `
+      <div style="${baseStyle}">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="font-size: 40px;">${c.emoji}</span>
+        </div>
+        <div style="background: ${c.bg}; border: 1px solid ${c.accent}22; border-radius: 16px; padding: 24px;">
+          <p style="margin: 0 0 4px; font-size: 14px; color: #6B7280;">Bonjour ${firstName},</p>
+          <h2 style="margin: 0 0 12px; font-size: 20px; color: #111827;">Bienvenue sur ChaletProp !</h2>
+          <p style="margin: 0 0 8px; font-size: 15px; color: #374151; line-height: 1.5;">
+            Votre compte a été approuvé par notre équipe. Vous pouvez maintenant
+            ${role === 'proprio' ? 'publier vos demandes de ménage et gérer vos chalets.' : 'recevoir les demandes de ménage dans votre zone et faire des offres.'}
+          </p>
+          <a href="${ctaLink.account_approved}" style="${btnStyle} background: ${c.accent}; color: white;">
+            ${ctaText.account_approved}
+          </a>
+        </div>
+        <p style="text-align: center; font-size: 12px; color: #9CA3AF; margin-top: 24px;">
+          ChaletProp — Ménage professionnel pour chalets locatifs
+        </p>
+      </div>
+    `
+    return { subject: `${c.emoji} Bienvenue sur ChaletProp !`, html }
+  }
+
+  if (type === 'account_rejected') {
+    const reasonBlock = reason
+      ? `
+        <div style="background: #FEF2F2; border-left: 3px solid ${c.accent}; border-radius: 8px; padding: 12px 14px; margin: 12px 0;">
+          <p style="margin: 0 0 4px; font-size: 12px; color: #6B7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;">
+            Motif du refus
+          </p>
+          <p style="margin: 0; font-size: 14px; color: #374151; line-height: 1.5; white-space: pre-wrap;">${reason}</p>
+        </div>
+      `
+      : `
+        <p style="margin: 12px 0; font-size: 14px; color: #6B7280; line-height: 1.5;">
+          Notre équipe n'a pas pu valider votre dossier en l'état.
+        </p>
+      `
+
+    const html = `
+      <div style="${baseStyle}">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <span style="font-size: 40px;">${c.emoji}</span>
+        </div>
+        <div style="background: ${c.bg}; border: 1px solid ${c.accent}22; border-radius: 16px; padding: 24px;">
+          <p style="margin: 0 0 4px; font-size: 14px; color: #6B7280;">Bonjour ${firstName},</p>
+          <h2 style="margin: 0 0 12px; font-size: 20px; color: #111827;">Votre compte n'a pas été approuvé</h2>
+          <p style="margin: 0; font-size: 15px; color: #374151; line-height: 1.5;">
+            Merci pour votre intérêt envers ChaletProp. Voici les prochaines étapes&nbsp;:
+          </p>
+          ${reasonBlock}
+          <p style="margin: 0 0 4px; font-size: 14px; color: #374151; line-height: 1.5;">
+            Vous pouvez corriger votre profil et soumettre à nouveau votre vérification.
+          </p>
+          <a href="${ctaLink.account_rejected}" style="${btnStyle} background: ${c.accent}; color: white;">
+            ${ctaText.account_rejected}
+          </a>
+        </div>
+        <p style="text-align: center; font-size: 12px; color: #9CA3AF; margin-top: 24px;">
+          ChaletProp — Une question ? Répondez à ce courriel.
+        </p>
+      </div>
+    `
+    return { subject: `${c.emoji} Suivi de votre inscription ChaletProp`, html }
+  }
+
+  // Template générique (in-app existant)
   const html = `
     <div style="${baseStyle}">
       <div style="text-align: center; margin-bottom: 24px;">
@@ -78,21 +176,22 @@ serve(async (req) => {
       )
     }
 
-    const { userId, type, title, body } = await req.json()
+    const payload = (await req.json()) as EmailPayload
+    const { userId, type, title, body, role: payloadRole, reason } = payload
 
-    if (!userId || !title) {
+    if (!userId || !type) {
       return new Response(
-        JSON.stringify({ error: 'userId and title required' }),
+        JSON.stringify({ error: 'userId and type required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Récupérer l'email et le prénom de l'utilisateur via le service role
+    // Récupérer l'email, le prénom et le rôle de l'utilisateur via le service role
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('first_name')
+      .select('first_name, role')
       .eq('id', userId)
       .single()
 
@@ -107,7 +206,14 @@ serve(async (req) => {
     }
 
     const firstName = profile?.first_name || 'utilisateur'
-    const emailContent = getEmailContent(type, title, body || '', firstName)
+    const role = payloadRole || profile?.role
+    const resolvedTitle = title || (
+      type === 'account_approved' ? 'Bienvenue sur ChaletProp !' :
+      type === 'account_rejected' ? 'Votre compte n\'a pas été approuvé' :
+      'Notification ChaletProp'
+    )
+
+    const emailContent = getEmailContent(type, resolvedTitle, body || '', firstName, role, reason)
 
     // Envoyer via Resend
     const res = await fetch('https://api.resend.com/emails', {

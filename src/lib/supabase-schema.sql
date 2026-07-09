@@ -577,4 +577,111 @@ begin
 end;
 $$;
 
+-- ============================================================
+-- P0-3 · Email automatique à l'approbation / au refus d'un compte
+-- ============================================================
+-- Trigger PG qui appelle l'edge function `send-notification-email`
+-- via `net.http_post` (pg_net) chaque fois que `verif_status`
+-- passe à 'approved' ou 'rejected'. Idempotent : aucun email si
+-- le statut n'a pas changé (comparaison OLD/NEW).
+--
+-- ⚠️ AVANT DE DÉPLOYER (une fois par projet Supabase) :
+--   1. Activer l'extension pg_net (fait plus bas).
+--   2. Enregistrer l'URL du projet + la service role key dans les
+--      paramètres de la base pour que le trigger puisse appeler
+--      l'edge function :
+--
+--        alter database postgres set app.settings.supabase_url    = 'https://<PROJECT>.supabase.co';
+--        alter database postgres set app.settings.service_role_key = '<SERVICE_ROLE_KEY>';
+--
+--      Puis reconnecter la session (les settings sont chargés au login).
+--   3. La colonne `verif_rejection_reason` est ajoutée ici mais reste
+--      alimentée par l'admin dashboard (P0-4).
+-- ============================================================
+
+-- Extension nécessaire pour appeler HTTP depuis Postgres
+create extension if not exists pg_net;
+
+-- Champ pour stocker la raison du refus (rempli par P0-4)
+alter table public.profiles
+  add column if not exists verif_rejection_reason text;
+
+-- Fonction déclencheur : envoie un email lors d'un changement de verif_status
+create or replace function notify_verif_status_changed()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  supabase_url    text;
+  service_key     text;
+  edge_url        text;
+  notif_type      text;
+  notif_title     text;
+  notif_body      text;
+  payload         jsonb;
+begin
+  -- Idempotence : sortir si le statut n'a pas changé (défense en profondeur,
+  -- le trigger utilise déjà une clause WHEN).
+  if new.verif_status is not distinct from old.verif_status then
+    return new;
+  end if;
+
+  -- On n'envoie un email que pour les statuts terminaux
+  if new.verif_status not in ('approved', 'rejected') then
+    return new;
+  end if;
+
+  supabase_url := current_setting('app.settings.supabase_url', true);
+  service_key  := current_setting('app.settings.service_role_key', true);
+
+  if supabase_url is null or service_key is null then
+    raise notice 'notify_verif_status_changed: app.settings.supabase_url ou service_role_key non configuré, email ignoré';
+    return new;
+  end if;
+
+  edge_url := supabase_url || '/functions/v1/send-notification-email';
+
+  if new.verif_status = 'approved' then
+    notif_type  := 'account_approved';
+    notif_title := 'Bienvenue sur ChaletProp !';
+    notif_body  := 'Votre compte a été approuvé. Vous pouvez maintenant utiliser ChaletProp.';
+  else
+    notif_type  := 'account_rejected';
+    notif_title := 'Votre compte n''a pas été approuvé';
+    notif_body  := coalesce(new.verif_rejection_reason, 'Votre demande de vérification n''a pas été acceptée.');
+  end if;
+
+  payload := jsonb_build_object(
+    'userId',    new.id::text,
+    'type',      notif_type,
+    'title',     notif_title,
+    'body',      notif_body,
+    'role',      new.role,
+    'reason',    new.verif_rejection_reason
+  );
+
+  -- Envoi asynchrone (pg_net); n'interrompt pas la transaction si échec.
+  perform net.http_post(
+    url     := edge_url,
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer ' || service_key
+    ),
+    body    := payload,
+    timeout_milliseconds := 5000
+  );
+
+  return new;
+end;
+$$;
+
+-- Trigger : ne se déclenche que sur transition réelle de verif_status
+drop trigger if exists trg_notify_verif_status_changed on public.profiles;
+create trigger trg_notify_verif_status_changed
+  after update of verif_status on public.profiles
+  for each row
+  when (old.verif_status is distinct from new.verif_status)
+  execute function notify_verif_status_changed();
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
