@@ -10,6 +10,7 @@ import { PROVINCES } from '../lib/constants'
 import { geocodeAddress, haversineDistance } from '../lib/geocode'
 
 const MapView = lazy(() => import('../components/MapView'))
+const CalendarTour = lazy(() => import('../components/CalendarTour'))
 
 const TABS = ['📍 Demandes', '⏳ Offres envoyées', '✅ Confirmées', '📅 Calendrier', '👤 Profil', '📋 Historique']
 
@@ -88,6 +89,12 @@ export default function ProDashboard() {
   const [editingBank, setEditingBank] = useState(false)
   const [bankForm, setBankForm] = useState({})
   const [savingBank, setSavingBank] = useState(false)
+  // Calendrier — tutoriel + filtres + placeholders
+  const [tourRun, setTourRun] = useState(false)
+  const [tourReady, setTourReady] = useState(false)
+  const [calFilter, setCalFilter] = useState('all') // 'all' | 'missions' | 'open'
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [showManualMissionModal, setShowManualMissionModal] = useState(false)
 
   // Helpers pour les cartes de demande
   function isAutoUrgent(req) {
@@ -127,6 +134,39 @@ export default function ProDashboard() {
     } finally {
       setUploadingDoc(null)
     }
+  }
+
+  // Tutoriel Calendrier : lancement automatique au 1er accès à l'onglet 3
+  // (seulement si le pro n'a pas encore terminé/skippé le tutoriel).
+  useEffect(() => {
+    if (tab !== 3) return
+    if (!profile) return
+    if (tourRun) return
+    if (profile.calendar_tour_completed_at) return
+    // Laisser le DOM se peindre avant de placer les tooltips.
+    const t = setTimeout(() => {
+      setTourReady(true)
+      setTourRun(true)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [tab, profile?.calendar_tour_completed_at])
+
+  async function handleTourFinish(status) {
+    setTourRun(false)
+    // Persister le flag pour ne pas relancer automatiquement la prochaine fois.
+    if (!profile?.calendar_tour_completed_at) {
+      try {
+        await updateProfile({ calendar_tour_completed_at: new Date().toISOString() })
+      } catch (err) {
+        // Non-bloquant : le tutoriel se relancera au prochain passage si l'update échoue.
+        console.warn('calendar_tour_completed_at:', err?.message || err)
+      }
+    }
+  }
+
+  function startCalendarTour() {
+    setTourReady(true)
+    setTourRun(true)
   }
 
   // Toutes les demandes ouvertes (pour la carte)
@@ -953,6 +993,39 @@ export default function ProDashboard() {
       {/* ── Onglet 3 : Calendrier ── */}
       {tab === 3 && (
         <div>
+          {/* Barre d'actions Calendrier (cibles du tutoriel react-joyride) */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <button
+              data-tour="calendar-import"
+              onClick={() => setShowImportModal(true)}
+              className="text-xs font-700 px-3 py-2 rounded-lg border border-teal/40 text-teal bg-teal/5 hover:bg-teal/10 transition-all">
+              📥 Importer contrats
+            </button>
+            <button
+              data-tour="calendar-add-mission"
+              onClick={() => setShowManualMissionModal(true)}
+              className="text-xs font-700 px-3 py-2 rounded-lg border border-teal/40 text-teal bg-teal/5 hover:bg-teal/10 transition-all">
+              ➕ Mission manuelle
+            </button>
+            <div data-tour="calendar-filters" className="ml-auto flex items-center gap-2">
+              <label className="text-[10px] font-700 text-gray-400 uppercase">Filtres</label>
+              <select
+                value={calFilter}
+                onChange={e => setCalFilter(e.target.value)}
+                className="text-xs font-600 border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:border-teal focus:outline-none">
+                <option value="all">Tout</option>
+                <option value="missions">Missions confirmées</option>
+                <option value="open">Demandes ouvertes</option>
+              </select>
+              <button
+                onClick={startCalendarTour}
+                title="Relancer le tutoriel"
+                aria-label="Relancer le tutoriel du calendrier"
+                className="w-8 h-8 rounded-full border border-gray-200 text-gray-500 hover:border-teal hover:text-teal transition-all font-700 text-sm">
+                ?
+              </button>
+            </div>
+          </div>
           {(() => {
             const now = new Date()
             const todayStr = now.toISOString().split('T')[0]
@@ -965,19 +1038,23 @@ export default function ProDashboard() {
             const startDow = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1
             const daysInMonth = lastDay.getDate()
 
-            // Index missions confirmées par date (teal)
+            // Index missions confirmées par date (teal) — masqué si filtre = "open"
             const missionsByDate = {}
-            myActive.forEach(r => {
-              if (!missionsByDate[r.scheduled_date]) missionsByDate[r.scheduled_date] = []
-              missionsByDate[r.scheduled_date].push(r)
-            })
+            if (calFilter !== 'open') {
+              myActive.forEach(r => {
+                if (!missionsByDate[r.scheduled_date]) missionsByDate[r.scheduled_date] = []
+                missionsByDate[r.scheduled_date].push(r)
+              })
+            }
 
-            // Index demandes ouvertes par date (coral) pour voir les conflits
+            // Index demandes ouvertes par date (coral) — masqué si filtre = "missions"
             const openByDate = {}
-            openReqs.forEach(r => {
-              if (!openByDate[r.scheduled_date]) openByDate[r.scheduled_date] = []
-              openByDate[r.scheduled_date].push(r)
-            })
+            if (calFilter !== 'missions') {
+              openReqs.forEach(r => {
+                if (!openByDate[r.scheduled_date]) openByDate[r.scheduled_date] = []
+                openByDate[r.scheduled_date].push(r)
+              })
+            }
 
             // Grille calendrier
             const calCells = []
@@ -1146,7 +1223,9 @@ export default function ProDashboard() {
                   <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
                     <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-teal" /> Confirmée</span>
                     <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-coral" /> Demande ouverte</span>
-                    <span className="flex items-center gap-1.5"><span className="text-[9px]">⚠️</span> Conflit potentiel</span>
+                    <span data-tour="calendar-conflicts" className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md">
+                      <span className="text-[9px]">⚠️</span> Conflit potentiel
+                    </span>
                   </div>
                 </div>
 
@@ -1749,6 +1828,79 @@ export default function ProDashboard() {
       )}
 
       <Toast toasts={toasts} />
+
+      {/* ── Modal : Importer contrats (placeholder) ── */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setShowImportModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="font-800 text-gray-900 mb-2">📥 Importer des contrats</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Chargez un fichier <strong>.csv</strong> ou <strong>.ics</strong> contenant vos contrats existants
+              (adresse, date, heure). Nous créerons automatiquement les entrées calendrier correspondantes.
+            </p>
+            <label className="block border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-teal transition-all">
+              <div className="text-3xl mb-2">📄</div>
+              <p className="text-sm font-700 text-gray-700">Choisir un fichier</p>
+              <p className="text-xs text-gray-400 mt-1">CSV ou ICS (max 5 Mo)</p>
+              <input type="file" accept=".csv,.ics" className="hidden"
+                onChange={() => {
+                  toast('🚧 Import de contrats — fonctionnalité arrivant bientôt', 'info')
+                  setShowImportModal(false)
+                }} />
+            </label>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setShowImportModal(false)}
+                className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal : Ajouter une mission manuelle (placeholder) ── */}
+      {showManualMissionModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setShowManualMissionModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="font-800 text-gray-900 mb-2">➕ Ajouter une mission manuelle</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Bloquez une plage de temps pour une mission hors plateforme. Elle apparaîtra dans votre
+              calendrier sans être visible par les propriétaires ChaletProp.
+            </p>
+            <div className="space-y-3">
+              <input type="text" placeholder="Nom du chalet / lieu"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
+              <div className="grid grid-cols-2 gap-2">
+                <input type="date" className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
+                <input type="time" className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-teal focus:outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowManualMissionModal(false)}
+                className="text-xs font-700 text-gray-500 hover:text-gray-700 px-4 py-2">
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  toast('🚧 Missions manuelles — fonctionnalité arrivant bientôt', 'info')
+                  setShowManualMissionModal(false)
+                }}
+                className="text-xs font-700 text-white bg-teal px-4 py-2 rounded-lg hover:bg-teal/90">
+                Ajouter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tutoriel guidé react-joyride ── */}
+      {tourReady && (
+        <Suspense fallback={null}>
+          <CalendarTour run={tourRun} onFinish={handleTourFinish} />
+        </Suspense>
+      )}
     </div>
   )
 }

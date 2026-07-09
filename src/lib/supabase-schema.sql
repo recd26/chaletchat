@@ -684,4 +684,14 @@ create trigger trg_notify_verif_status_changed
   when (old.verif_status is distinct from new.verif_status)
   execute function notify_verif_status_changed();
 
+-- ============================================================
+-- P2-4 · Tutoriel guidé calendrier (react-joyride)
+-- ============================================================
+-- Un flag horodaté qui marque la première complétion du tutoriel
+-- Calendrier du dashboard PRO. Nul tant que le pro n'a pas terminé
+-- (ou skippé) la visite guidée. Le bouton "?" du calendrier permet
+-- de relancer le tutoriel à tout moment sans modifier ce flag.
+alter table public.profiles
+  add column if not exists calendar_tour_completed_at timestamptz;
+
 -- ─── FIN DU SCHÉMA ───────────────────────────────────────────
